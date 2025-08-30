@@ -1,5 +1,45 @@
 import React from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { resolveServiceForUrl } from '../services/adapters'
+import { Html5Engine } from '../player/Html5Engine'
+import { connectRemote, on } from '../remote/client'
+
+export default function Player(){
+  const loc = useLocation()
+  const nav = useNavigate()
+  const params = new URLSearchParams(loc.search)
+  const url = params.get('url') || ''
+
+  React.useEffect(() => {
+    if (!url) return
+    const svc = resolveServiceForUrl(url)
+    const drmServices = new Set(['netflix','prime','disney'])
+    if (svc.key && drmServices.has(svc.key)){
+      // Open via WebView2 host
+      window.smartTV.drm.open({ service: svc.key, url, sessionKey: svc.key, display: 'primary', fullscreen: true })
+      // Listen basic events for OSD
+      const off = window.smartTV.drm.onEvent((ev) => {
+        if (ev?.type === 'error'){
+          // Fallback: open externally
+          window.smartTV.openExternal(url)
+        }
+      })
+      return () => { off?.() }
+    } else {
+      // Non-DRM: open in internal WebView route
+      nav(`/webview?url=${encodeURIComponent(url)}`)
+    }
+  }, [url])
+
+  return (
+    <div style={{color:'#fff', padding: 24}}>
+      <h2>Avvio riproduzione…</h2>
+      <p>URL: {url}</p>
+      <button onClick={()=> nav(-1)}>Indietro</button>
+    </div>
+  )
+}
+
 import { Html5Engine } from '../player/Html5Engine'
 import { connectRemote, on } from '../remote/client'
 
@@ -19,15 +59,11 @@ export default function Player(){
       if(ref.current) engine.current.mount(ref.current)
       engine.current.load(file)
     } else if (url) {
-      // Streaming services - open externally for best compatibility
-      if (window.smartTV && window.smartTV.openExternal) {
-        window.smartTV.openExternal(url)
-        nav('/')
-      } else {
-        // In browser, open in new tab
-        window.open(url, '_blank')
-        nav('/')
+      // Streaming services - open in-app WebView for immersive experience
+      if (window.smartTV?.openInApp) {
+        window.smartTV.openInApp(url)
       }
+      nav(`/webview?url=${encodeURIComponent(url)}`)
       return
     } else {
       nav('/')

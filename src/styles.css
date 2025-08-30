@@ -145,3 +145,69 @@ button {
 .hidden-cursor, .hidden-cursor * {
   cursor: none !important;
 }
+
+/* Grid sizing adjustments for TV layout */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-1);
+}
+
+.grid.grid-large {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+/* Tile component modern styles */
+.tile {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3);
+  background: linear-gradient(180deg, var(--elev-1), var(--elev-2));
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--transition-1), box-shadow var(--transition-1), background var(--transition-1);
+}
+
+.tile:focus-visible,
+.tile:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-2);
+}
+
+.tile-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-right: var(--space-3);
+}
+
+.tile-title {
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tile-subtitle {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: var(--font-size-5);
+}
+
+/* Brand coloring by data-brand */
+.tile[data-brand="YouTube"] .tile-icon { color: #FF0000; }
+.tile[data-brand="Netflix"] .tile-icon { color: #E50914; }
+.tile[data-brand="Prime Video"] .tile-icon { color: #00A8E1; }
+.tile[data-brand="Disney+"] .tile-icon { color: #113CCF; }
+.tile[data-brand="Spotify"] .tile-icon { color: #1DB954; }
+.tile[data-brand="Twitch"] .tile-icon { color: #9146FF; }
+.tile[data-brand="Plex"] .tile-icon { color: #E5A00D; }
+
+/* Make hero larger for TV distance */
+.hero .hero-content h1 { font-size: 72px; }
+.hero .hero-content p { font-size: 22px; color: var(--text-2); }
+
+/* Topbar spacing */
+.topbar { height: 64px; display:flex; align-items:center; justify-content:space-between; padding: 0 var(--space-3); background: var(--bg-1); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.brand strong { font-weight: var(--font-weight-semibold); }

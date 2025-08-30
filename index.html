@@ -4,45 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SmartTV PC</title>
-    <style>
-      body {
-        background: red !important;
-        color: white !important;
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 20px;
-      }
-      
-      #root {
-        min-height: 100vh;
-        background: blue !important;
-        border: 5px solid yellow;
-        padding: 20px;
-      }
-      
-      .fallback {
-        background: green !important;
-        color: white !important;
-        padding: 40px;
-        font-size: 24px;
-        font-weight: bold;
-        text-align: center;
-        border: 5px solid orange;
-        margin: 20px 0;
-      }
-    </style>
   </head>
   <body>
-    <div class="fallback">FALLBACK: HTML is loading</div>
-    <div id="root">
-      <div class="fallback">ROOT DIV - React should replace this</div>
-    </div>
-    <script>
-      console.log('HTML SCRIPT: Page loaded');
-      setTimeout(() => {
-        console.log('HTML SCRIPT: DOM after 2 seconds:', document.body.innerHTML.substring(0, 300));
-      }, 2000);
-    </script>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

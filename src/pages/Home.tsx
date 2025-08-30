@@ -3,6 +3,7 @@ import Tile from '../components/Tile'
 import RemoteQR from '../components/RemoteQR'
 import { connectRemote, on } from '../remote/client'
 import { handleRemoteCommand } from '../utils/navigation'
+import { getServiceEntry } from '../services/adapters'
 
 export default function Home(){
   console.log('Home component rendered')
@@ -26,6 +27,14 @@ export default function Home(){
     })()
   }, [])
   
+  const yt = getServiceEntry('youtube')
+  const nf = getServiceEntry('netflix')
+  const pv = getServiceEntry('prime')
+  const dp = getServiceEntry('disney')
+  const sp = getServiceEntry('spotify')
+  const tw = getServiceEntry('twitch')
+  const pl = getServiceEntry('plex')
+
   return (
     <>
       <section className="hero">
@@ -35,10 +44,15 @@ export default function Home(){
         </div>
       </section>
 
-      <div className="grid">
+      <div className="grid grid-large">
         <Tile label="Libreria" subtitle="File locali e playlist" to="/library"/>
-        <Tile label="YouTube" subtitle="Apri nel browser" to="/player?url=https://www.youtube.com"/>
-        <Tile label="Netflix" subtitle="Apri nel browser" to="/player?url=https://www.netflix.com"/>
+        <Tile label="YouTube" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(yt)}`}/>
+        <Tile label="Netflix" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(nf)}`}/>
+        <Tile label="Prime Video" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(pv)}`}/>
+        <Tile label="Disney+" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(dp)}`}/>
+        <Tile label="Spotify" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(sp)}`}/>
+        <Tile label="Twitch" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(tw)}`}/>
+        <Tile label="Plex" subtitle="Apri in app" to={`/player?url=${encodeURIComponent(pl)}`}/>
         <Tile label="Impostazioni" subtitle="Preferenze app" to="/settings"/>
         <RemoteQR/>
       </div>

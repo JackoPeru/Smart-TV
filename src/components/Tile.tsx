@@ -5,7 +5,7 @@ export default function Tile({ label, to, subtitle }: { label: string, to: strin
   const nav = useNavigate()
 
   const Icon = React.useMemo(() => {
-    const commonProps = { width: 28, height: 28, fill: 'currentColor' }
+    const commonProps = { width: 42, height: 42, fill: 'currentColor' }
     switch (label.toLowerCase()) {
       case 'libreria':
         return (
@@ -25,6 +25,44 @@ export default function Tile({ label, to, subtitle }: { label: string, to: strin
             <path d="M4 3h3l5 10V3h3v18h-3l-5-10v10H4V3z" />
           </svg>
         )
+      case 'prime video':
+        return (
+          <svg viewBox="0 0 24 24" {...commonProps}>
+            <rect x="3" y="5" width="18" height="14" rx="2" ry="2"/>
+            <polygon points="11,9 11,15 16,12" fill="#fff"/>
+          </svg>
+        )
+      case 'disney+':
+        return (
+          <svg viewBox="0 0 24 24" {...commonProps}>
+            <path d="M12 20a8 8 0 1 1 6.93-12.06" stroke="currentColor" strokeWidth="2" fill="none"/>
+            <path d="M14 10h2v2h2v2h-2v2h-2v-2h-2v-2h2z"/>
+          </svg>
+        )
+      case 'spotify':
+        return (
+          <svg viewBox="0 0 24 24" {...commonProps}>
+            <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.15"/>
+            <path d="M7 10c3-1 7-1 10 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+            <path d="M8 13c2.5-0.8 5.5-0.8 8 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+            <path d="M9 16c2-0.6 4-0.6 6 0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+          </svg>
+        )
+      case 'twitch':
+        return (
+          <svg viewBox="0 0 24 24" {...commonProps}>
+            <path d="M4 3h16v10l-4 4h-4l-2 2H8v-2H4V3z"/>
+            <rect x="9" y="7" width="2" height="4" fill="#fff"/>
+            <rect x="13" y="7" width="2" height="4" fill="#fff"/>
+          </svg>
+        )
+      case 'plex':
+        return (
+          <svg viewBox="0 0 24 24" {...commonProps}>
+            <path d="M5 3h14v18H5z" fill="none"/>
+            <path d="M9 5l6 7-6 7V5z"/>
+          </svg>
+        )
       case 'impostazioni':
       case 'settings':
         return (
@@ -41,8 +79,9 @@ export default function Tile({ label, to, subtitle }: { label: string, to: strin
     }
   }, [label])
 
+  // Use data-brand to style icon color via CSS brand rules
   return (
-    <button className="tile" onClick={() => nav(to)} tabIndex={0}>
+    <button className="tile" data-brand={label} onClick={() => nav(to)} tabIndex={0}>
       <div className="tile-icon">{Icon}</div>
       <div className="tile-text">
         <div className="tile-title">{label}</div>
