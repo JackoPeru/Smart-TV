@@ -9,6 +9,7 @@ export default function WebViewPage(){
   const webviewRef = React.useRef<Electron.WebviewTag | null>(null)
   const overlayRef = React.useRef<HTMLDivElement | null>(null)
   const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const webviewReadyRef = React.useRef(false)
 
   // Cursor state in pixels relative to container
   const cursorPos = React.useRef({ x: 200, y: 200 })
@@ -64,7 +65,7 @@ export default function WebViewPage(){
 
   const injectMouseMove = React.useCallback((x: number, y: number) => {
     const tag = webviewRef.current
-    if (!tag) return
+    if (!tag || !webviewReadyRef.current) return
     const code = `(() => {
       const x=${Math.round(x)}, y=${Math.round(y)};
       // Cursor overlay inside page (optional visual)
@@ -87,7 +88,7 @@ export default function WebViewPage(){
 
   const injectMouseClick = React.useCallback((x: number, y: number) => {
     const tag = webviewRef.current
-    if (!tag) return
+    if (!tag || !webviewReadyRef.current) return
     const code = `(() => {
       const x=${Math.round(x)}, y=${Math.round(y)};
       const opts = { clientX: x, clientY: y, bubbles: true };
@@ -140,7 +141,8 @@ export default function WebViewPage(){
     }
 
     const onDomReady = () => {
-      tag.insertCSS('::-webkit-scrollbar{display:none;} body{overscroll-behavior:none;}')
+      webviewReadyRef.current = true
+      try { tag.insertCSS('::-webkit-scrollbar{display:none;} body{overscroll-behavior:none;}') } catch {}
     }
 
     tag.addEventListener('new-window', onNewWindow as any)
@@ -172,11 +174,12 @@ export default function WebViewPage(){
         })
         on('nav:back', () => { try { tag.goBack() } catch {} })
         on('play:toggle', () => {
+          if (!webviewReadyRef.current) return
           try {
             tag.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown',{key:' '}));document.dispatchEvent(new KeyboardEvent('keyup',{key:' '}));`, false)
           } catch {}
         })
-        on('menu', () => { try { tag.openDevTools() } catch {} })
+        on('menu', () => { if (!webviewReadyRef.current) return; try { tag.openDevTools() } catch {} })
       }catch{}
     })()
 
@@ -186,6 +189,8 @@ export default function WebViewPage(){
       tag.removeEventListener('dom-ready', onDomReady as any)
       ;(tag as any).remove?.()
       off('pad:move'); off('pad:click'); off('nav:back'); off('play:toggle'); off('menu')
+      webviewReadyRef.current = false
+      webviewRef.current = null
     }
   }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, updateOverlay])
 
