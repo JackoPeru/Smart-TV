@@ -23,6 +23,11 @@ export default function Home(){
         on('nav:ok', () => handleRemoteCommand('nav:ok'))
         on('nav:back', () => handleRemoteCommand('nav:back'))
         on('home', () => handleRemoteCommand('home'))
+
+        // extra bindings
+        on('play:toggle', () => document.activeElement instanceof HTMLElement && document.activeElement.click())
+        on('vol:up', () => console.log('volume up'))
+        on('vol:down', () => console.log('volume down'))
       } catch {}
     })()
   }, [])

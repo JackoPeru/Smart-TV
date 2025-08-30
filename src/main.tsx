@@ -19,7 +19,7 @@ if (!rootElement) {
   
   console.log('Rendering RouterProvider...')
   root.render(
-    <RouterProvider router={router} />
+    <RouterProvider router={router} future={{ v7_startTransition: true }} />
   )
   
   console.log('=== REACT APP RENDERED ===')

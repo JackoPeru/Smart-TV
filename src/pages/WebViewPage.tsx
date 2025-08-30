@@ -1,93 +1,145 @@
 import React from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { resolveServiceForUrl } from '../services/adapters'
+import { connectRemote, on, off } from '../remote/client'
 
 export default function WebViewPage(){
   const [params] = useSearchParams()
   const nav = useNavigate()
   const webviewRef = React.useRef<Electron.WebviewTag | null>(null)
-  const [currentURL, setCurrentURL] = React.useState<string>('about:blank')
+  const overlayRef = React.useRef<HTMLDivElement | null>(null)
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+
+  // Cursor state in pixels relative to container
+  const cursorPos = React.useRef({ x: 200, y: 200 })
 
   const isElectron = React.useMemo(() => {
-    return typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron') || !!(window as any).smartTV
+    return (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')) || !!(window as any).smartTV
   }, [])
 
-  // Keep a stable configuration for the lifetime of this component (partition cannot change after creation)
-  const configRef = React.useRef<{ ua?: string; partition?: string; allowedHosts: string[] }>({ ua: undefined, partition: undefined, allowedHosts: [] })
+  const urlParam = params.get('url') || ''
 
+  // Se non c'è URL, torna alla home
   React.useEffect(() => {
-    const url = params.get('url')
-    if (!url) {
-      nav('/')
-      return
-    }
-    setCurrentURL(url)
+    if (!urlParam) nav('/')
+  }, [urlParam, nav])
 
+  // Calcola configurazione
+  const config = React.useMemo(() => {
+    if (!urlParam) return { ua: undefined as string | undefined, partition: 'persist:apps', allowedHosts: [] as string[] }
     try {
-      const conf = resolveServiceForUrl(url)
+      const conf = resolveServiceForUrl(urlParam)
       const ua = params.get('ua') || conf.tvUserAgent
       const partition = `persist:${conf.partition || 'apps'}`
       const allowedHosts = conf.allowedHosts && conf.allowedHosts.length > 0
         ? conf.allowedHosts
-        : [new URL(url).hostname]
-      configRef.current = { ua: ua || undefined, partition, allowedHosts }
+        : [new URL(urlParam).hostname]
+      return { ua: ua || undefined, partition, allowedHosts }
     } catch {
-      // Fallback: restrict to same host
       try {
-        const host = new URL(url).hostname
-        configRef.current = { ua: undefined, partition: 'persist:apps', allowedHosts: [host] }
+        const host = new URL(urlParam).hostname
+        return { ua: undefined, partition: 'persist:apps', allowedHosts: [host] }
       } catch {
-        configRef.current = { ua: undefined, partition: 'persist:apps', allowedHosts: [] }
+        return { ua: undefined, partition: 'persist:apps', allowedHosts: [] }
       }
     }
-  }, [params])
+  }, [urlParam, params])
 
-  React.useEffect(() => {
-    const handler = (evt: MessageEvent) => {
-      if ((evt as any).data?.type === 'smarttv:navigate') {
-        const url = (evt as any).data?.payload?.url as string
-        if (url) nav(`/webview?url=${encodeURIComponent(url)}`)
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [nav])
+  // Helpers for cursor overlay and event injection
+  const updateOverlay = React.useCallback(() => {
+    const overlay = overlayRef.current
+    const container = containerRef.current
+    if (!overlay || !container) return
+    overlay.style.transform = `translate(${cursorPos.current.x}px, ${cursorPos.current.y}px)`
+  }, [])
+
+  const clampToContainer = React.useCallback((x: number, y: number) => {
+    const container = containerRef.current
+    if (!container) return { x, y }
+    const rect = container.getBoundingClientRect()
+    const maxX = Math.max(0, rect.width - 1)
+    const maxY = Math.max(0, rect.height - 1)
+    return { x: Math.max(0, Math.min(maxX, x)), y: Math.max(0, Math.min(maxY, y)) }
+  }, [])
+
+  const injectMouseMove = React.useCallback((x: number, y: number) => {
+    const tag = webviewRef.current
+    if (!tag) return
+    const code = `(() => {
+      const x=${Math.round(x)}, y=${Math.round(y)};
+      // Cursor overlay inside page (optional visual)
+      try {
+        const id='__smarttv_cursor';
+        let el = document.getElementById(id);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = id;
+          el.style.cssText = 'position:fixed;z-index:2147483647;left:0;top:0;width:16px;height:16px;border-radius:50%;background:rgba(102,217,239,0.9);box-shadow:0 0 10px rgba(102,217,239,0.7);pointer-events:none;transform:translate(-100px,-100px);';
+          document.documentElement.appendChild(el);
+        }
+        el.style.transform = 'translate(' + (x-8) + 'px,' + (y-8) + 'px)';
+      } catch {}
+      const ev = new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true });
+      document.dispatchEvent(ev);
+    })();`
+    try { tag.executeJavaScript(code, false) } catch {}
+  }, [])
+
+  const injectMouseClick = React.useCallback((x: number, y: number) => {
+    const tag = webviewRef.current
+    if (!tag) return
+    const code = `(() => {
+      const x=${Math.round(x)}, y=${Math.round(y)};
+      const opts = { clientX: x, clientY: y, bubbles: true };
+      const target = document.elementFromPoint(x, y) || document.body;
+      try { target.dispatchEvent(new MouseEvent('mousemove', opts)); } catch {}
+      try { target.dispatchEvent(new MouseEvent('mousedown', opts)); } catch {}
+      try { target.dispatchEvent(new MouseEvent('mouseup', opts)); } catch {}
+      try { if (target && typeof target.click === 'function') target.click(); } catch {}
+    })();`
+    try { tag.executeJavaScript(code, false) } catch {}
+  }, [])
 
   React.useEffect(() => {
     if (!isElectron) return
-    const tag = webviewRef.current
-    if (!tag) return
 
-    const isAllowed = (raw: string | URL) => {
-      try {
-        const u = typeof raw === 'string' ? new URL(raw) : raw
-        return configRef.current.allowedHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
-      } catch {
-        return false
-      }
-    }
+    const tag = document.createElement('webview') as unknown as Electron.WebviewTag
+    const container = containerRef.current!
+    tag.setAttribute('src', urlParam)
+    tag.setAttribute('partition', config.partition)
+    tag.setAttribute('allowpopups', 'true')
+    tag.style.width = '100%'
+    tag.style.height = '100%'
+    tag.style.display = 'block'
+    tag.style.backgroundColor = '#000'
+    if (config.ua) tag.setUserAgent(config.ua)
 
     const onNewWindow = (e: any) => {
-      // Keep navigation inside the webview if allowed, otherwise open externally
-      e.preventDefault()
-      const target = e.url || e.targetUrl
-      if (target && isAllowed(target)) {
-        tag.loadURL(target)
-      } else if (target && (window as any).smartTV?.openExternal) {
-        ;(window as any).smartTV.openExternal(target)
-      }
+      try {
+        const url = e.url || e.detail?.url
+        if (!url) return
+        const host = new URL(url).hostname
+        if (config.allowedHosts.includes(host)) {
+          tag.loadURL(url)
+        } else {
+          window.smartTV.openExternal(url)
+        }
+      } catch {}
     }
+
     const onWillNavigate = (e: any) => {
-      if (e.url && isAllowed(e.url)) {
-        e.preventDefault()
-        tag.loadURL(e.url)
-      } else if (e.url && (window as any).smartTV?.openExternal) {
-        e.preventDefault()
-        ;(window as any).smartTV.openExternal(e.url)
-      }
+      try {
+        const url = e.url || e.detail?.url || ''
+        if (!url) return
+        const host = new URL(url).hostname
+        if (!config.allowedHosts.includes(host)) {
+          e.preventDefault?.()
+          window.smartTV.openExternal(url)
+        }
+      } catch {}
     }
+
     const onDomReady = () => {
-      // Optional: inject CSS to hide scrollbars or tweak UI
       tag.insertCSS('::-webkit-scrollbar{display:none;} body{overscroll-behavior:none;}')
     }
 
@@ -95,32 +147,76 @@ export default function WebViewPage(){
     tag.addEventListener('will-navigate', onWillNavigate as any)
     tag.addEventListener('dom-ready', onDomReady as any)
 
+    container.appendChild(tag as any)
+    webviewRef.current = tag
+
+    ;(async () => {
+      try{
+        const base = await window.smartTV.getRemoteURL()
+        connectRemote(base)
+        // TRACKPAD: move cursor and inject mouse events
+        on('pad:move', ({dx, dy}: {dx:number, dy:number}) => {
+          const cont = containerRef.current
+          if (!cont) return
+          const speed = 1.2 // sensitivity factor
+          const nx = cursorPos.current.x + (dx * speed)
+          const ny = cursorPos.current.y + ((-dy) * speed) // invert dy back to match finger movement
+          const clamped = clampToContainer(nx, ny)
+          cursorPos.current = clamped
+          updateOverlay()
+          injectMouseMove(clamped.x, clamped.y)
+        })
+        on('pad:click', () => {
+          const { x, y } = cursorPos.current
+          injectMouseClick(x, y)
+        })
+        on('nav:back', () => { try { tag.goBack() } catch {} })
+        on('play:toggle', () => {
+          try {
+            tag.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown',{key:' '}));document.dispatchEvent(new KeyboardEvent('keyup',{key:' '}));`, false)
+          } catch {}
+        })
+        on('menu', () => { try { tag.openDevTools() } catch {} })
+      }catch{}
+    })()
+
     return () => {
       tag.removeEventListener('new-window', onNewWindow as any)
       tag.removeEventListener('will-navigate', onWillNavigate as any)
       tag.removeEventListener('dom-ready', onDomReady as any)
+      ;(tag as any).remove?.()
+      off('pad:move'); off('pad:click'); off('nav:back'); off('play:toggle'); off('menu')
     }
-  }, [isElectron])
+  }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, updateOverlay])
 
-  const tvUA = configRef.current.ua
-  const partition = configRef.current.partition || 'persist:apps'
+  if (!isElectron) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', background: '#000' }}>
+        <div style={{ color: '#fff', padding: 20 }}>Questa pagina richiede Electron.</div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#000' }}>
-      {isElectron ? (
-        // Note: partition cannot change after creation; we compute it once from configRef
-        <webview
-          ref={webviewRef as any}
-          src={currentURL}
-          style={{ width: '100%', height: '100%' }}
-          allowpopups
-          webpreferences="nativeWindowOpen=yes"
-          useragent={tvUA}
-          partition={partition}
-        />
-      ) : (
-        <iframe title="app" src={currentURL} style={{ width: '100%', height: '100%', border: 'none' }} />
-      )}
+    <div ref={containerRef} style={{ position: 'relative', width: '100vw', height: '100vh', background: '#000' }}>
+      {/* Cursor overlay in renderer */}
+      <div
+        ref={overlayRef}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: 16,
+          height: 16,
+          borderRadius: 999,
+          background: 'rgba(102,217,239,0.9)',
+          boxShadow: '0 0 10px rgba(102,217,239,0.7)',
+          pointerEvents: 'none',
+          transform: `translate(${cursorPos.current.x}px, ${cursorPos.current.y}px)`,
+          transition: 'transform 40ms linear',
+          zIndex: 10,
+        }}
+      />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
-import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, ChildProcess } from 'node:child_process'
 import { startRemoteServer, getRemoteURL } from '../src/remote/server'
 import * as net from 'node:net'
 
@@ -20,13 +20,15 @@ if (widevinePath) {
   }
 }
 
-let hostProc: ChildProcessWithoutNullStreams | null = null
+let hostProc: ChildProcess | null = null
 let pipe: net.Socket | null = null
-const PIPE_NAME = `\\.\pipe\smarttv_webview2` as const
+// Percorso corretto delle Named Pipe in Windows: \\.\pipe\smarttv_webview2
+const PIPE_NAME = '\\\\.\\\\pipe\\\\smarttv_webview2' as const
 
 function connectPipe(): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket()
+    console.log('Attempting to connect to DRM host pipe at', PIPE_NAME)
     socket.connect(PIPE_NAME as any, () => {
       pipe = socket
       pipe.setEncoding('utf8')
@@ -47,10 +49,32 @@ function connectPipe(): Promise<void> {
           }
         }
       })
+      socket.on('close', () => {
+        console.warn('DRM host pipe closed')
+      })
       resolve()
     })
-    socket.on('error', reject)
+    socket.on('error', (err) => {
+      console.error('Pipe connection error:', err)
+      reject(err)
+    })
   })
+}
+
+async function connectPipeWithRetry(retries = 15, delayMs = 200): Promise<void> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`Connecting to DRM host pipe (attempt ${i + 1}/${retries})...`)
+      await connectPipe()
+      return
+    } catch (err) {
+      console.warn('Failed to connect to DRM host pipe:', (err as Error)?.message || err)
+      // Se l'host non è avviato o è terminato, rilancialo
+      if (!hostProc) spawnHost()
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
+  }
+  throw new Error(`Failed to connect to DRM host pipe after ${retries} attempts`)
 }
 
 function sendToHost(payload: any) {
@@ -63,8 +87,10 @@ function spawnHost() {
   const exePath = isDev
     ? join(process.cwd(), 'win-host', 'SmartTV.WebView2Host', 'bin', 'Debug', 'net8.0-windows', 'SmartTV.WebView2Host.exe')
     : join(process.resourcesPath, 'win-host', 'SmartTV.WebView2Host', 'SmartTV.WebView2Host.exe')
-  hostProc = spawn(exePath, [], { stdio: 'inherit' })
-  hostProc.on('exit', (code) => {
+  console.log('Spawning WebView2 host:', exePath)
+  const child = spawn(exePath, [], { stdio: 'inherit' })
+  hostProc = child
+  child.on('exit', (code) => {
     console.log('WebView2 host exited with code', code)
     hostProc = null
     pipe?.destroy()
@@ -86,7 +112,8 @@ function createWindow() {
       nodeIntegration: false,
       webviewTag: true,
       sandbox: !isDev, // Enable in prod
-      webSecurity: !isDev, // Enable in prod
+      webSecurity: true, // keep enabled also in development to avoid security warnings
+      allowRunningInsecureContent: false,
     },
   })
 
@@ -144,7 +171,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('drm:open', async (_e, opts) => {
     // lazy spawn and connect
     if (!hostProc) spawnHost()
-    if (!pipe) await connectPipe()
+    if (!pipe) await connectPipeWithRetry(15, 200)
     sendToHost({ type: 'open', ...opts })
   })
   ipcMain.handle('drm:nav', (_e, { cmd }) => sendToHost({ type: 'nav', cmd }))

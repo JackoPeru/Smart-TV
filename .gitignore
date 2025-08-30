@@ -29,3 +29,10 @@ coverage/
 
 # Misc
 *.local
+
+# .NET build outputs
+win-host/SmartTV.WebView2Host/bin/
+win-host/SmartTV.WebView2Host/obj/
+
+# Visual Studio
+.vs/

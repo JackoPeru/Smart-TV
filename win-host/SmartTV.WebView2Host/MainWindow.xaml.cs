@@ -27,14 +27,28 @@ namespace SmartTV.WebView2Host
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            await InitializePipeAsync();
-            await SendEventAsync(new { type = "ready" });
+            try
+            {
+                Debug.WriteLine("[Host] MainWindow Loaded: initializing pipe...");
+                await InitializePipeAsync();
+                Debug.WriteLine("[Host] Pipe initialized and client connected.");
+                await SendEventAsync(new { type = "ready" });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Host] Error during startup: {ex.Message}");
+                try { await SendEventAsync(new { type = "error", message = ex.Message, code = "STARTUP" }); } catch { }
+                Close();
+            }
         }
 
         private async Task InitializePipeAsync()
         {
+            Debug.WriteLine("[Host] Creating NamedPipeServerStream smarttv_webview2...");
             _pipe = new NamedPipeServerStream("smarttv_webview2", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            Debug.WriteLine("[Host] Waiting for client connection...");
             await _pipe.WaitForConnectionAsync();
+            Debug.WriteLine("[Host] Client connected to pipe.");
             _reader = new StreamReader(_pipe, Encoding.UTF8);
             _writer = new StreamWriter(_pipe, new UTF8Encoding(false)) { AutoFlush = true };
             _ = Task.Run(ListenLoopAsync);
@@ -77,48 +91,60 @@ namespace SmartTV.WebView2Host
                     }
                     catch (Exception ex)
                     {
+                        Debug.WriteLine($"[Host] Parser error: {ex.Message}");
                         await SendEventAsync(new { type = "error", message = ex.Message, code = "PARSER" });
                     }
                 }
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[Host] Pipe error: {ex.Message}");
                 await SendEventAsync(new { type = "error", message = ex.Message, code = "PIPE" });
             }
         }
 
         private async Task HandleOpenAsync(JsonElement root)
         {
-            _serviceKey = root.GetProperty("service").GetString() ?? "";
-            _sessionKey = root.GetProperty("sessionKey").GetString() ?? _serviceKey;
-            var url = root.GetProperty("url").GetString() ?? "about:blank";
-            var fullscreen = root.TryGetProperty("fullscreen", out var fs) && fs.GetBoolean();
-
-            var userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SmartTV", "sessions", _sessionKey);
-            Directory.CreateDirectory(userDataFolder);
-
-            await WebView.EnsureCoreWebView2Async(null);
-            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            await WebView.EnsureCoreWebView2Async(env);
-
-            // default Edge UA, no spoof for DRM
-            WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            WebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
-            WebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
-
-            if (fullscreen)
-            {
-                await Dispatcher.InvokeAsync(() => GoFullscreenOnPrimary());
-            }
-
             try
             {
-                WebView.Source = new Uri(url);
+                _serviceKey = root.GetProperty("service").GetString() ?? "";
+                _sessionKey = root.GetProperty("sessionKey").GetString() ?? _serviceKey;
+                var url = root.GetProperty("url").GetString() ?? "about:blank";
+                var fullscreen = root.TryGetProperty("fullscreen", out var fs) && fs.GetBoolean();
+                Debug.WriteLine($"[Host] HandleOpen: service={_serviceKey} session={_sessionKey} url={url} fullscreen={fullscreen}");
+
+                var userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SmartTV", "sessions", _sessionKey);
+                Directory.CreateDirectory(userDataFolder);
+                Debug.WriteLine($"[Host] Using profile folder: {userDataFolder}");
+
+                // Rimuoviamo l'inizializzazione di default e usiamo solo l'environment personalizzato
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                await WebView.EnsureCoreWebView2Async(env);
+
+                WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                WebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
+                WebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+
+                if (fullscreen)
+                {
+                    await Dispatcher.InvokeAsync(() => GoFullscreenOnPrimary());
+                }
+
+                try
+                {
+                    WebView.Source = new Uri(url);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[Host] Navigation error: {ex.Message}");
+                    await SendEventAsync(new { type = "error", message = ex.Message, code = "NAV" });
+                }
             }
             catch (Exception ex)
             {
-                await SendEventAsync(new { type = "error", message = ex.Message, code = "NAV" });
+                Debug.WriteLine($"[Host] HandleOpen error: {ex.Message}");
+                await SendEventAsync(new { type = "error", message = ex.Message, code = "OPEN" });
             }
         }
 
@@ -161,6 +187,7 @@ namespace SmartTV.WebView2Host
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[Host] Exec error: {ex.Message}");
                 await SendEventAsync(new { type = "error", message = ex.Message, code = "EXEC" });
             }
         }
@@ -171,10 +198,11 @@ namespace SmartTV.WebView2Host
             var json = payload.GetRawText();
             try
             {
-                await WebView.CoreWebView2.PostWebMessageAsJson(json);
+                WebView.CoreWebView2.PostWebMessageAsJson(json);
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[Host] PostMessage error: {ex.Message}");
                 await SendEventAsync(new { type = "error", message = ex.Message, code = "POST" });
             }
         }
@@ -209,6 +237,7 @@ namespace SmartTV.WebView2Host
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[Host] WebMessage error: {ex.Message}");
                 await SendEventAsync(new { type = "error", message = ex.Message, code = "WEBMSG" });
             }
         }
