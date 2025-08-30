@@ -1,26 +1,14 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { spawn, ChildProcess } from 'node:child_process'
+import isDev from 'electron-is-dev'
 import { startRemoteServer, getRemoteURL } from '../src/remote/server'
-import * as net from 'node:net'
+import { spawn } from 'child_process'
+import net from 'net'
 
 let win: BrowserWindow | null = null
-const isDev = process.env.NODE_ENV === 'development'
 
-// Optional Widevine setup via env vars (does nothing if not provided)
-const widevinePath = process.env.WIDEVINE_CDM_PATH
-const widevineVersion = process.env.WIDEVINE_CDM_VERSION
-if (widevinePath) {
-  try {
-    app.commandLine.appendSwitch('widevine-cdm-path', widevinePath)
-    if (widevineVersion) app.commandLine.appendSwitch('widevine-cdm-version', widevineVersion)
-    console.log('Widevine configured from env path:', widevinePath)
-  } catch (e) {
-    console.warn('Widevine configuration failed:', e)
-  }
-}
-
-let hostProc: ChildProcess | null = null
+// DRM bridge state
+let hostProc: any = null
 let pipe: net.Socket | null = null
 // Percorso corretto delle Named Pipe in Windows: \\.\pipe\smarttv_webview2
 const PIPE_NAME = '\\\\.\\\\pipe\\\\smarttv_webview2' as const
@@ -162,7 +150,8 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   console.log('App ready, starting remote server...')
-  const port = await startRemoteServer()
+  const fixedPort = parseInt(process.env.SMARTTV_REMOTE_PORT || '', 10) || 64028
+  const port = await startRemoteServer(fixedPort)
   console.log('Remote server started on port:', port)
   createWindow()
   ipcMain.handle('remote:get-url', () => getRemoteURL(port))
