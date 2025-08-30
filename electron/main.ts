@@ -1,9 +1,10 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'node:path'
-import isDev from 'electron-is-dev'
 import { startRemoteServer, getRemoteURL } from '../src/remote/server'
 import { spawn } from 'child_process'
 import net from 'net'
+
+const isDev = !!process.env.ELECTRON_RENDERER_URL
 
 let win: BrowserWindow | null = null
 

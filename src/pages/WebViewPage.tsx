@@ -113,7 +113,7 @@ export default function WebViewPage(){
     tag.style.height = '100%'
     tag.style.display = 'block'
     tag.style.backgroundColor = '#000'
-    if (config.ua) tag.setUserAgent(config.ua)
+    if (config.ua) tag.setAttribute('useragent', config.ua)
 
     const onNewWindow = (e: any) => {
       try {
@@ -145,9 +145,17 @@ export default function WebViewPage(){
       try { tag.insertCSS('::-webkit-scrollbar{display:none;} body{overscroll-behavior:none;}') } catch {}
     }
 
+    const onDidAttach = () => {
+      try {
+        // Ensure UA is applied even if attribute was missed; only after attach is safe
+        if (config.ua) (tag as any).setUserAgent?.(config.ua)
+      } catch {}
+    }
+
     tag.addEventListener('new-window', onNewWindow as any)
     tag.addEventListener('will-navigate', onWillNavigate as any)
     tag.addEventListener('dom-ready', onDomReady as any)
+    tag.addEventListener('did-attach-webview', onDidAttach as any)
 
     container.appendChild(tag as any)
     webviewRef.current = tag
@@ -187,6 +195,7 @@ export default function WebViewPage(){
       tag.removeEventListener('new-window', onNewWindow as any)
       tag.removeEventListener('will-navigate', onWillNavigate as any)
       tag.removeEventListener('dom-ready', onDomReady as any)
+      tag.removeEventListener('did-attach-webview', onDidAttach as any)
       ;(tag as any).remove?.()
       off('pad:move'); off('pad:click'); off('nav:back'); off('play:toggle'); off('menu')
       webviewReadyRef.current = false
