@@ -1,0 +1,61 @@
+/* Modern 10-foot UI inspired by Steam Big Picture & Google TV */
+* { margin: 0; padding: 0; box-sizing: border-box }
+
+html, body { width: 100%; height: 100% }
+html, body, #root { background: radial-gradient(120% 120% at 0% 0%, #0f1419, #0f1419 40%, #15222d 70%, #1f3b4a 100%); color: #e8f0f6; }
+
+:root{
+  --bg-0:#0f1419; --bg-1:#131a21; --bg-2:#1b252f; --card:#101820; --muted:#9fb2c6; --accent:#66d9ef; --accent-2:#8be9a8; --outline: rgba(102,217,239,.75)
+}
+
+#root { display:flex; flex-direction:column; height:100vh }
+
+/* TopBar */
+.topbar{ position:fixed; inset:0 auto auto 0; right:0; height:80px; display:flex; align-items:center; justify-content:space-between; padding:0 40px; z-index:10; background:linear-gradient(180deg, rgba(10,14,18,.85), rgba(10,14,18,.6)); backdrop-filter: blur(10px); border-bottom:1px solid rgba(255,255,255,.08); box-shadow: 0 10px 30px rgba(0,0,0,.35) }
+.topbar .brand{ display:flex; align-items:center; gap:14px }
+.topbar .brand-accent{ width:12px; height:12px; border-radius:50%; background:linear-gradient(135deg, var(--accent), var(--accent-2)) }
+.topbar strong{ font-size:28px; font-weight:700; letter-spacing:.2px; background: linear-gradient(45deg, var(--accent), var(--accent-2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
+.remote-badge{ font-size:14px; color:#cfe3f3; opacity:.9; background:rgba(255,255,255,.06); padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.08) }
+
+/* Main */
+main{ flex:1; padding:120px 60px 48px 60px; overflow:auto }
+
+/* Hero */
+.hero{ margin:0 auto 24px; max-width:1400px; padding:16px 8px }
+.hero-content{ padding:24px 8px 8px }
+.hero h1{ font-size:48px; line-height:1.1; margin-bottom:8px; letter-spacing:.3px }
+.hero p{ color:var(--muted); font-size:18px }
+
+/* Grid */
+.grid{ display:grid; gap:28px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); max-width:1400px; margin: 0 auto }
+
+/* Tile */
+.tile{ background: radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,.06), rgba(255,255,255,.02)); padding:28px; border-radius:18px; border:1px solid rgba(255,255,255,.08); color:#fff; text-decoration:none; display:flex; align-items:center; gap:18px; transition: transform .2s ease, box-shadow .2s ease, outline .2s ease, background .2s ease; cursor:pointer; text-align:left; box-shadow: 0 6px 20px rgba(0,0,0,.35) }
+.tile-icon{ width:56px; height:56px; display:grid; place-items:center; border-radius:14px; background: linear-gradient(135deg, rgba(102,217,239,.2), rgba(139,233,168,.18)); color:white }
+.tile-text{ display:flex; flex-direction:column; gap:6px }
+.tile-title{ font-size:22px; font-weight:650 }
+.tile-subtitle{ font-size:14px; color: var(--muted) }
+.tile:hover, .tile:focus{ outline:4px solid var(--outline); background: radial-gradient(120% 120% at 0% 0%, rgba(102,217,239,.12), rgba(255,255,255,.04)); transform: translateY(-3px) }
+.tile:active{ transform: translateY(0) scale(.99) }
+
+/* Remote QR */
+.remote-qr{ background: rgba(0,0,0,.35); padding:24px; border-radius:16px; border:1px solid rgba(255,255,255,.08); text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; max-width:380px; margin: 24px auto 0 }
+.remote-qr img{ border-radius:12px; margin-bottom:12px; box-shadow: 0 6px 16px rgba(0,0,0,.35) }
+
+/* Player */
+.player-container{ position:relative; width:100vw; height:100vh; background:#000 }
+.video-element{ width:100%; height:100%; object-fit:contain }
+
+.video-controls{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(transparent, rgba(0,0,0,.8)); padding:16px; display:flex; align-items:center; gap:16px }
+.play-pause-btn{ background: rgba(255,255,255,.15); border:none; color:white; padding:.6rem .8rem; border-radius:8px; cursor:pointer }
+.time-display{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.95rem }
+.progress-bar{ flex:1; height:5px; background: rgba(255,255,255,.3); border-radius:3px; position:relative }
+.progress-bar::before{ content:''; position:absolute; inset:0 auto 0 0; height:100%; background: var(--accent); border-radius:3px; width: var(--progress, 0%) }
+
+/* Focus */
+.tile:focus, button:focus{ outline:4px solid var(--outline) !important; outline-offset:2px; box-shadow: 0 0 20px rgba(102,217,239,.5), 0 6px 20px rgba(0,0,0,.35) }
+.tile:focus{ transform: translateY(-4px) scale(1.02) }
+
+/* Cursor */
+*{ outline: none }
+.hidden-cursor, .hidden-cursor * { cursor:none !important }

@@ -1,0 +1,734 @@
+# SmartTV PC – Starter Kit (Electron + React, 10‑foot UI)
+
+> MVP per trasformare un PC in una "smart TV" con interfaccia 10‑foot, player locale, telecomando da smartphone via WebSocket, avvio in modalità kiosk/fullscreen. Architettura modulare per aggiungere DLNA, AirPlay e CEC in seguito.
+
+---
+
+## ✨ Feature dell’MVP
+
+* Home TV‑like (grandi riquadri)
+* Libreria locale (scan cartelle + poster via filename)
+* Player video/audio (HTML5 Video con accelerazione HW, HLS/DASH via hls.js opz.)
+* Telecomando web su rete locale (play/pause/seek/volume/navigazione)
+* Codice QR sullo schermo per aprire il telecomando
+* Modalità kiosk (schermo intero, cursore nascosto)
+* Launcher per app/URL esterni (YouTube/Netflix nel browser) e ritorno alla Home
+
+> Nota: il layer Player è astratto (`PlayerEngine`) così potrai sostituire l’HTML5 video con **mpv/libmpv** o un wrapper (es. `node-mpv`) quando vorrai abilitare HDR passthrough, filtri avanzati, ecc.
+
+---
+
+## 📁 Struttura del progetto
+
+```
+smarttv-pc/
+├─ package.json
+├─ vite.config.ts
+├─ electron.vite.config.ts
+├─ tsconfig.json
+├─ .env (opzionale)
+├─ /electron
+│  ├─ main.ts
+│  ├─ preload.ts
+│  └─ auto-launch.ts
+├─ /src
+│  ├─ main.tsx
+│  ├─ App.tsx
+│  ├─ router.tsx
+│  ├─ styles.css
+│  ├─ components/
+│  │  ├─ Tile.tsx
+│  │  ├─ TopBar.tsx
+│  │  ├─ RemoteQR.tsx
+│  │  └─ FocusGrid.tsx
+│  ├─ pages/
+│  │  ├─ Home.tsx
+│  │  ├─ Library.tsx
+│  │  ├─ Player.tsx
+│  │  └─ Settings.tsx
+│  ├─ player/
+│  │  ├─ PlayerEngine.ts
+│  │  └─ Html5Engine.ts
+│  ├─ remote/
+│  │  ├─ server.ts (node/express/ws lato main)
+│  │  └─ client.ts (lato renderer)
+│  ├─ media/
+│  │  ├─ scanner.ts
+│  │  └─ types.ts
+│  └─ utils/
+│     ├─ kiosk.ts
+│     └─ openExternal.ts
+├─ /remote-web (telecomando: static SPA servita da Express)
+│  ├─ index.html
+│  └─ remote.js
+└─ /assets
+   └─ logo.png
+```
+
+---
+
+## 🚀 Setup rapido
+
+```bash
+# 1) Crea il progetto
+mkdir smarttv-pc && cd smarttv-pc
+npm init -y
+npm i -D electron @electron-toolkit/tsconfig electron-vite vite typescript
+npm i react react-dom react-router-dom qrcode ws express cors
+npm i -D @types/ws @types/express @types/node
+
+# opzionale per HLS
+npm i hls.js
+```
+
+> Suggerito: **Node 20 LTS**. Su Windows abilita `Hardware-accelerated video decode` nelle impostazioni di sistema quando usi Edge/Chrome.
+
+---
+
+## ⚙️ Configurazioni base
+
+### `package.json`
+
+```json
+{
+  "name": "smarttv-pc",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.1",
+    "ws": "^8.18.0"
+  }
+}
+```
+
+### `electron.vite.config.ts`
+
+```ts
+import { defineConfig } from 'electron-vite'
+import { resolve } from 'node:path'
+
+export default defineConfig({
+  main: {
+    build: { rollupOptions: { input: resolve(__dirname, 'electron/main.ts') } }
+  },
+  preload: {
+    build: { rollupOptions: { input: resolve(__dirname, 'electron/preload.ts') } }
+  },
+  renderer: {
+    build: { rollupOptions: { input: resolve(__dirname, 'index.html') } }
+  }
+})
+```
+
+### `tsconfig.json`
+
+```json
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "baseUrl": "."
+  },
+  "include": ["electron", "src", "remote-web", "electron.vite.config.ts"]
+}
+```
+
+---
+
+## 🧠 Processo Electron (main)
+
+### `electron/main.ts`
+
+```ts
+import { app, BrowserWindow, ipcMain, shell, nativeTheme } from 'electron'
+import { join } from 'node:path'
+import { startRemoteServer, getRemoteURL } from '../src/remote/server'
+
+let win: BrowserWindow | null = null
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1920,
+    height: 1080,
+    fullscreen: true,
+    autoHideMenuBar: true,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#000000' : '#000000',
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
+    }
+  })
+
+  const url = process.env.ELECTRON_RENDERER_URL
+  if (url) win.loadURL(url)
+  else win.loadFile(join(__dirname, '../index.html'))
+
+  win.on('closed', () => { win = null })
+}
+
+app.whenReady().then(async () => {
+  const port = await startRemoteServer()
+  createWindow()
+  ipcMain.handle('remote:get-url', () => getRemoteURL(port))
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+
+ipcMain.handle('open-external', (e, target: string) => {
+  shell.openExternal(target)
+})
+```
+
+### `electron/preload.ts`
+
+```ts
+import { contextBridge, ipcRenderer } from 'electron'
+
+contextBridge.exposeInMainWorld('smartTV', {
+  getRemoteURL: () => ipcRenderer.invoke('remote:get-url'),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url)
+})
+```
+
+```ts
+// global.d.ts (opzionale, per TypeScript nel renderer)
+declare global {
+  interface Window {
+    smartTV: {
+      getRemoteURL: () => Promise<string>
+      openExternal: (url: string) => Promise<void>
+    }
+  }
+}
+export {}
+```
+
+---
+
+## 🌐 Server del telecomando (Express + WebSocket)
+
+### `src/remote/server.ts`
+
+```ts
+import express from 'express'
+import cors from 'cors'
+import { WebSocketServer } from 'ws'
+import http from 'http'
+import { networkInterfaces } from 'os'
+import { join } from 'node:path'
+
+let lastBroadcast: (msg: any) => void = () => {}
+
+export async function startRemoteServer() {
+  const app = express()
+  app.use(cors())
+  app.use('/', express.static(join(process.cwd(), 'remote-web')))
+
+  const server = http.createServer(app)
+  const wss = new WebSocketServer({ server })
+
+  wss.on('connection', (ws) => {
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString())
+        // Broadcast al renderer (verrà intercettato dal client)
+        lastBroadcast(msg)
+      } catch (e) {}
+    })
+  })
+
+  const port = await new Promise<number>(resolve => {
+    server.listen(0, () => {
+      const address = server.address()
+      if (typeof address === 'object' && address) resolve(address.port)
+    })
+  })
+
+  return port
+}
+
+export function getRemoteURL(port: number) {
+  const nets = networkInterfaces()
+  let ip = '127.0.0.1'
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) { ip = net.address; break }
+    }
+  }
+  return `http://${ip}:${port}`
+}
+
+// bridge verso il renderer
+export function onRemoteMessage(cb: (msg: any) => void) {
+  lastBroadcast = cb
+}
+```
+
+### `remote-web/index.html`
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SmartTV Remote</title>
+    <style>
+      body{font-family:system-ui;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+      .pad{display:grid;gap:12px;grid-template-columns:repeat(3,80px);}
+      button{font-size:16px;padding:14px;border-radius:12px;border:1px solid #ccc}
+      .wide{grid-column: span 3}
+    </style>
+  </head>
+  <body>
+    <div class="pad">
+      <button data-cmd="nav:up">▲</button>
+      <button data-cmd="nav:ok">OK</button>
+      <button data-cmd="nav:back">⟲</button>
+      <button data-cmd="nav:left">◀</button>
+      <button data-cmd="play:toggle">⏯</button>
+      <button data-cmd="nav:right">▶</button>
+      <button class="wide" data-cmd="vol:down">Vol −</button>
+      <button class="wide" data-cmd="vol:up">Vol +</button>
+      <button class="wide" data-cmd="home">Home</button>
+    </div>
+    <script>
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+      const ws = new WebSocket(`${proto}://${location.host}`)
+      function send(cmd){ ws.readyState===1 && ws.send(JSON.stringify({cmd})) }
+      document.querySelectorAll('button').forEach(b=>{
+        b.addEventListener('click',()=> send(b.dataset.cmd))
+      })
+    </script>
+  </body>
+</html>
+```
+
+---
+
+## 🧭 Router & UI 10‑foot
+
+### `src/main.tsx`
+
+```tsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { RouterProvider } from 'react-router-dom'
+import router from './router'
+import './styles.css'
+
+createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />)
+```
+
+### `index.html` (root renderer)
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartTV PC</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+### `src/router.tsx`
+
+```tsx
+import { createBrowserRouter } from 'react-router-dom'
+import App from './App'
+import Home from './pages/Home'
+import Library from './pages/Library'
+import Player from './pages/Player'
+import Settings from './pages/Settings'
+
+export default createBrowserRouter([
+  { path: '/', element: <App/>, children: [
+    { index: true, element: <Home/> },
+    { path: 'library', element: <Library/> },
+    { path: 'player', element: <Player/> },
+    { path: 'settings', element: <Settings/> }
+  ]}
+])
+```
+
+### `src/styles.css`
+
+```css
+:root { --bg:#000; --fg:#fff; --muted:#999; --accent:#22a6f2 }
+*{box-sizing:border-box} html,body,#root{height:100%}
+body{margin:0;background:#000;color:#fff;font-family:system-ui}
+main{padding:40px}
+.grid{display:grid;gap:24px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.tile{background:#111;padding:24px;border-radius:20px;border:1px solid #222;font-size:24px}
+.tile:focus{outline:4px solid var(--accent)}
+.topbar{position:fixed;left:0;right:0;top:0;height:64px;display:flex;align-items:center;padding:0 24px;background:rgba(0,0,0,.6);backdrop-filter:blur(6px)}
+.video{width:100vw;height:100vh;object-fit:contain;background:#000}
+.hidden-cursor{cursor:none}
+```
+
+### `src/App.tsx`
+
+```tsx
+import React from 'react'
+import { Outlet } from 'react-router-dom'
+import TopBar from './components/TopBar'
+
+export default function App(){
+  React.useEffect(()=>{
+    document.body.classList.add('hidden-cursor')
+  },[])
+  return (<>
+    <TopBar/>
+    <main><Outlet/></main>
+  </>)
+}
+```
+
+### `src/components/TopBar.tsx`
+
+```tsx
+import React from 'react'
+export default function TopBar(){
+  const [remoteURL, setRemoteURL] = React.useState('')
+  React.useEffect(()=>{ window.smartTV?.getRemoteURL().then(setRemoteURL) },[])
+  return (
+    <div className="topbar">
+      <strong>SmartTV PC</strong>
+      <span style={{marginLeft:16,opacity:.7,fontSize:14}}>{remoteURL && `Remote: ${remoteURL}`}</span>
+    </div>
+  )
+}
+```
+
+### `src/components/RemoteQR.tsx`
+
+```tsx
+import React from 'react'
+import QRCode from 'qrcode'
+
+export default function RemoteQR(){
+  const [url,setUrl] = React.useState('')
+  const [data,setData] = React.useState('')
+  React.useEffect(()=>{(async()=>{
+    const u = await window.smartTV.getRemoteURL()
+    setUrl(u)
+    setData(await QRCode.toDataURL(u))
+  })()},[])
+  if(!data) return null
+  return (
+    <div style={{textAlign:'center'}}>
+      <img src={data} width={180} height={180} />
+      <div style={{opacity:.7,marginTop:8}}>{url}</div>
+    </div>
+  )
+}
+```
+
+---
+
+## 🧱 Home & Libreria
+
+### `src/components/Tile.tsx`
+
+```tsx
+import React from 'react'
+import { useNavigate } from 'react-router-dom'
+
+export default function Tile({label,to}:{label:string,to:string}){
+  const nav = useNavigate()
+  return (
+    <button className="tile" onClick={()=>nav(to)}>{label}</button>
+  )
+}
+```
+
+### `src/pages/Home.tsx`
+
+```tsx
+import React from 'react'
+import Tile from '../components/Tile'
+import RemoteQR from '../components/RemoteQR'
+
+export default function Home(){
+  return (
+    <div className="grid">
+      <Tile label="Libreria" to="/library"/>
+      <Tile label="YouTube" to="/player?url=https://www.youtube.com"/>
+      <Tile label="Netflix" to="/player?url=https://www.netflix.com"/>
+      <Tile label="Impostazioni" to="/settings"/>
+      <RemoteQR/>
+    </div>
+  )
+}
+```
+
+### `src/media/types.ts`
+
+```ts
+export type MediaItem = {
+  id: string
+  title: string
+  path: string
+  poster?: string
+  duration?: number
+}
+```
+
+### `src/media/scanner.ts`
+
+```ts
+import { readdirSync, statSync } from 'node:fs'
+import { join, extname, basename } from 'node:path'
+import type { MediaItem } from './types'
+
+const exts = new Set(['.mp4','.mkv','.mov','.webm','.mp3','.flac'])
+
+export function scanFolder(dir: string): MediaItem[] {
+  const out: MediaItem[] = []
+  for (const f of readdirSync(dir)){
+    const p = join(dir,f)
+    const st = statSync(p)
+    if (st.isDirectory()) {
+      out.push(...scanFolder(p))
+    } else if (exts.has(extname(f).toLowerCase())) {
+      out.push({ id: p, title: basename(f), path: p })
+    }
+  }
+  return out
+}
+```
+
+### `src/pages/Library.tsx`
+
+```tsx
+import React from 'react'
+import type { MediaItem } from '../media/types'
+
+// Per semplicità: cartella configurabile hardcoded; in produzione: Settings
+const DEFAULT_DIR = process.platform === 'win32' ? 'C:/Users/Public/Videos' : '/home'
+
+export default function Library(){
+  const [items,setItems] = React.useState<MediaItem[]>([])
+  React.useEffect(()=>{
+    // chiamata al main per leggere il FS (via preload: aggiungi un IPC se vuoi)
+    // Per l'MVP: mock statico
+    setItems([])
+  },[])
+
+  return (
+    <div className="grid">
+      {items.length===0 && <div>Nessun media indicizzato. Configura la cartella in Impostazioni.</div>}
+      {items.map(m => (
+        <a key={m.id} className="tile" href={`/player?file=${encodeURIComponent(m.path)}`}>{m.title}</a>
+      ))}
+    </div>
+  )
+}
+```
+
+> Nota: per leggere il filesystem dal renderer, esponi funzioni in **preload** con `ipcRenderer.invoke('scan', dir)` e implementa la logica nel **main** usando `scanFolder(dir)`.
+
+---
+
+## 🎬 Player (astratto + HTML5)
+
+### `src/player/PlayerEngine.ts`
+
+```ts
+export interface PlayerEngine {
+  mount(el: HTMLElement): void
+  load(source: string): Promise<void>
+  play(): void
+  pause(): void
+  toggle(): void
+  seek(seconds: number): void
+  setVolume(v: number): void
+}
+```
+
+### `src/player/Html5Engine.ts`
+
+```ts
+import type { PlayerEngine } from './PlayerEngine'
+
+export class Html5Engine implements PlayerEngine {
+  private video?: HTMLVideoElement
+
+  mount(el: HTMLElement){
+    const v = document.createElement('video')
+    v.className='video'
+    v.controls=false
+    v.autoplay=true
+    v.playsInline=true
+    v.disablePictureInPicture = true
+    el.appendChild(v)
+    this.video = v
+  }
+  async load(src: string){
+    if(!this.video) throw new Error('mount first')
+    // Se è URL http/https apri webview esterna: per i servizi DRM meglio usare openExternal
+    this.video.src = src.startsWith('file:')||src.startsWith('data:')||src.startsWith('blob:')||src.startsWith('/')? src : src
+    await this.video.play().catch(()=>{})
+  }
+  play(){ this.video?.play() }
+  pause(){ this.video?.pause() }
+  toggle(){ if(!this.video) return; this.video.paused?this.video.play():this.video.pause() }
+  seek(s: number){ if(this.video) this.video.currentTime += s }
+  setVolume(v: number){ if(this.video) this.video.volume = Math.max(0, Math.min(1, v)) }
+}
+```
+
+### `src/pages/Player.tsx`
+
+```tsx
+import React from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { Html5Engine } from '../player/Html5Engine'
+
+export default function Player(){
+  const [params] = useSearchParams()
+  const nav = useNavigate()
+  const ref = React.useRef<HTMLDivElement>(null)
+  const engine = React.useRef(new Html5Engine())
+
+  React.useEffect(()=>{
+    if(ref.current) engine.current.mount(ref.current)
+    const file = params.get('file')
+    const url = params.get('url')
+    if (file) engine.current.load(file)
+    else if (url) window.smartTV.openExternal(url).then(()=> nav('/'))
+    else nav('/')
+  },[])
+
+  // TODO: collegare eventi dal server WebSocket per controlli remoti
+
+  return <div ref={ref}></div>
+}
+```
+
+---
+
+## 📡 Client remoto nel renderer (agganciare comandi)
+
+### `src/remote/client.ts`
+
+```ts
+let ws: WebSocket | null = null
+let handlers: Record<string, ()=>void> = {}
+
+export function connectRemote(url: string){
+  try {
+    ws = new WebSocket(url.replace('http','ws'))
+    ws.onmessage = (ev)=>{
+      try{
+        const {cmd} = JSON.parse(ev.data)
+        handlers[cmd]?.()
+      }catch(e){}
+    }
+  } catch {}
+}
+
+export function on(cmd: string, fn: ()=>void){ handlers[cmd] = fn }
+```
+
+> Integra in `Player.tsx`: chiama `window.smartTV.getRemoteURL()` → `connectRemote(url)` e mappa i comandi (`play:toggle`, `vol:up`, `vol:down`, `nav:back` → `navigate(-1)` ecc.).
+
+---
+
+## 🛠️ Utilities
+
+### `src/utils/openExternal.ts`
+
+```ts
+export function openYouTube(query?: string){
+  const base = 'https://www.youtube.com'
+  const url = query ? `${base}/results?search_query=${encodeURIComponent(query)}` : base
+  return window.smartTV.openExternal(url)
+}
+```
+
+### `src/utils/kiosk.ts`
+
+```ts
+export function hideCursor(){ document.body.classList.add('hidden-cursor') }
+export function showCursor(){ document.body.classList.remove('hidden-cursor') }
+```
+
+---
+
+## 🧩 TODO (estensioni chiave)
+
+* **FS scanner via IPC**: esponi `scanFolder(dir)` dal main e persisti un indice (+ poster scaricati).
+* **Focus/TV navigation**: usa `FocusGrid` per gestire frecce/OK via tastiera/gamepad e via remoto.
+* **HLS/DASH**: integra `hls.js` quando il file è `.m3u8`.
+* **mpv/libmpv**: sostituisci `Html5Engine` con mpv per HDR passthrough e formati avanzati.
+* **DLNA renderer**: modulo Node separato (es. implementazione UPnP MR).
+* **CEC**: integra `libcec` (addon nativo) o usa adattatore Pulse‑Eight.
+* **Profili & preferiti**: utenti, watch‑progress, continue watching.
+* **Auto‑launch**: registra l’app all’avvio del sistema.
+
+---
+
+## ▶️ Avvio
+
+```bash
+npm run dev
+```
+
+* L’app parte in fullscreen; nella TopBar vedi l’URL del **telecomando** (anche via QR).
+* Apri l’URL dal telefono sulla stessa rete Wi‑Fi → controlli base.
+
+---
+
+## 📌 Note su DRM (Netflix, Prime, Disney+)
+
+* Evita WebView: apri **sempre** il browser/app ufficiale con `openExternal`. Il player interno è pensato per file locali, IPTV e stream pubblici non-DRM.
+* Per 4K/HDR servono requisiti di OS/monitor/HDCP: gestisci come deep‑link esterno.
+
+---
+
+## 🧭 Roadmap proposta (1‑2 settimane)
+
+1. **Controlli remoti end‑to‑end** (bridge WebSocket → Player).
+2. **Scanner FS + libreria** con miniature e "Riprendi da dove eri".
+3. **Focus navigazione TV** (frecce/OK/Back; supporto gamepad).
+4. **HLS + mpv backend opzionale**.
+5. **DLNA receiver** (foto/video) + CEC opzionale.
+
+---
+
+## Licenza
+
+MIT (consigliata per starter kit).

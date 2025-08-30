@@ -1,0 +1,142 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SmartTV Remote</title>
+    <style>
+      body {
+        font-family: system-ui;
+        margin: 0;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #0f1419 0%, #1a252f 50%, #2c5364 100%);
+        color: white;
+      }
+      
+      .remote-container {
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      
+      .remote-title {
+        text-align: center;
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 25px;
+        color: #66d9ef;
+      }
+      
+      .pad {
+        display: grid;
+        gap: 15px;
+        grid-template-columns: repeat(3, 70px);
+        grid-template-rows: repeat(4, 50px);
+      }
+      
+      button {
+        font-size: 16px;
+        font-weight: 600;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.1);
+        color: white;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      button:hover {
+        background: rgba(102,217,239,0.2);
+        border-color: rgba(102,217,239,0.5);
+        transform: scale(1.05);
+      }
+      
+      button:active {
+        transform: scale(0.95);
+      }
+      
+      /* Navigation Cross Layout */
+      .nav-up { grid-column: 2; grid-row: 1; }
+      .nav-left { grid-column: 1; grid-row: 2; }
+      .nav-ok { grid-column: 2; grid-row: 2; background: rgba(102,217,239,0.15); }
+      .nav-right { grid-column: 3; grid-row: 2; }
+      .nav-down { grid-column: 2; grid-row: 3; }
+      
+      /* Action buttons */
+      .btn-back { grid-column: 1; grid-row: 1; }
+      .btn-home { grid-column: 3; grid-row: 1; }
+      .btn-play { grid-column: 1; grid-row: 3; }
+      .btn-menu { grid-column: 3; grid-row: 3; }
+      
+      /* Volume row */
+      .vol-down { grid-column: 1; grid-row: 4; }
+      .vol-up { grid-column: 3; grid-row: 4; }
+      
+      .wide { grid-column: span 3; }
+    </style>
+  </head>
+  <body>
+    <div class="remote-container">
+      <div class="remote-title">📱 SmartTV Remote</div>
+      <div class="pad">
+        <!-- Row 1: Back, Up, Home -->
+        <button class="btn-back" data-cmd="nav:back" title="Back">⟲</button>
+        <button class="nav-up" data-cmd="nav:up" title="Up">▲</button>
+        <button class="btn-home" data-cmd="home" title="Home">🏠</button>
+        
+        <!-- Row 2: Left, OK, Right -->
+        <button class="nav-left" data-cmd="nav:left" title="Left">◀</button>
+        <button class="nav-ok" data-cmd="nav:ok" title="OK">OK</button>
+        <button class="nav-right" data-cmd="nav:right" title="Right">▶</button>
+        
+        <!-- Row 3: Play, Down, Menu -->
+        <button class="btn-play" data-cmd="play:toggle" title="Play/Pause">⏯</button>
+        <button class="nav-down" data-cmd="nav:down" title="Down">▼</button>
+        <button class="btn-menu" data-cmd="menu" title="Menu">☰</button>
+        
+        <!-- Row 4: Volume Controls -->
+        <button class="vol-down" data-cmd="vol:down" title="Volume Down">🔉</button>
+        <button class="vol-up" data-cmd="vol:up" title="Volume Up">🔊</button>
+      </div>
+    </div>
+    
+    <script>
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+      const ws = new WebSocket(`${proto}://${location.host}`)
+      
+      function send(cmd) { 
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({cmd}))
+          console.log('Sent command:', cmd)
+        }
+      }
+      
+      // Add visual feedback on button press
+      document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('click', () => {
+          send(button.dataset.cmd)
+          
+          // Visual feedback
+          button.style.background = 'rgba(102,217,239,0.4)'
+          setTimeout(() => {
+            button.style.background = ''
+          }, 200)
+        })
+      })
+      
+      // Connection status
+      ws.onopen = () => console.log('Remote connected')
+      ws.onclose = () => console.log('Remote disconnected')
+      ws.onerror = (e) => console.error('Remote error:', e)
+    </script>
+  </body>
+</html>
