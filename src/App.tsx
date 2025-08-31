@@ -1,10 +1,11 @@
 import React from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import TopBar from './components/TopBar'
 import { initNavigation, updateFocusableElements } from './utils/navigation'
 
 export default function App(){
   console.log('App component rendered')
+  const loc = useLocation()
   
   React.useEffect(()=>{
     console.log('App useEffect: adding hidden-cursor class and initializing navigation')
@@ -25,6 +26,15 @@ export default function App(){
     
     return () => observer.disconnect()
   },[])
+
+  // Imposta un attributo sul root per consentire regole CSS per route (es. full-screen)
+  React.useEffect(() => {
+    const root = document.getElementById('root')
+    if (!root) return
+    // route key: prima parte del path ('' -> home)
+    const seg = (loc.pathname.split('/')[1] || 'home').toLowerCase()
+    root.setAttribute('data-route', seg)
+  }, [loc.pathname])
   
   return (
     <>

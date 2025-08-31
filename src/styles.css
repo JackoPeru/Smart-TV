@@ -108,15 +108,26 @@ body {
 }
 
 /* Remove Safe Area padding for Player view */
-#root[data-route="player"] {
+#root[data-route="player"],
+#root[data-route="webview"] {
   padding: 0;
 }
 
 main {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* avoid scrolling in full-screen routes */
   padding-top: var(--space-6); /* Space for TopNav */
+}
+
+/* When in player or webview, remove top space and hide topbar */
+#root[data-route="player"] main,
+#root[data-route="webview"] main {
+  padding-top: 0;
+}
+
+#root[data-route="player"] .topbar,
+#root[data-route="webview"] .topbar {
+  display: none;
 }
 
 /* Remove default button styles */
@@ -167,13 +178,30 @@ button {
   background: linear-gradient(180deg, var(--elev-1), var(--elev-2));
   border-radius: var(--radius-2);
   box-shadow: var(--shadow-1);
-  transition: transform var(--transition-1), box-shadow var(--transition-1), background var(--transition-1);
+  transition: transform var(--transition-1), box-shadow var(--transition-1), background var(--transition-1), outline var(--transition-1), outline-offset var(--transition-1);
 }
 
 .tile:focus-visible,
 .tile:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow: var(--shadow-2);
+}
+
+/* NEW: strong focus ring for remote navigation */
+.tile:focus,
+button:focus,
+button:focus-visible,
+.tile[tabindex="0"]:focus {
+  outline: 4px solid var(--brand);
+  outline-offset: 4px;
+  box-shadow: var(--shadow-2), 0 0 0 6px rgba(45, 125, 255, 0.35);
+}
+
+/* Optional helper class if focus is applied programmatically */
+.is-focused {
+  outline: 4px solid var(--brand) !important;
+  outline-offset: 4px !important;
+  box-shadow: var(--shadow-2), 0 0 0 6px rgba(45, 125, 255, 0.35) !important;
 }
 
 .tile-icon {

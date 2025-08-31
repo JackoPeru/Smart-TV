@@ -47,7 +47,16 @@ namespace SmartTV.WebView2Host
             Debug.WriteLine("[Host] Creating NamedPipeServerStream smarttv_webview2...");
             _pipe = new NamedPipeServerStream("smarttv_webview2", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             Debug.WriteLine("[Host] Waiting for client connection...");
-            await _pipe.WaitForConnectionAsync();
+
+            // Add timeout to avoid persistent black screen if client never connects
+            var connectTask = _pipe.WaitForConnectionAsync();
+            var timeoutTask = Task.Delay(8000);
+            var completed = await Task.WhenAny(connectTask, timeoutTask);
+            if (completed == timeoutTask)
+            {
+                throw new TimeoutException("Timeout while waiting for client to connect to pipe");
+            }
+
             Debug.WriteLine("[Host] Client connected to pipe.");
             _reader = new StreamReader(_pipe, Encoding.UTF8);
             _writer = new StreamWriter(_pipe, new UTF8Encoding(false)) { AutoFlush = true };
@@ -95,11 +104,16 @@ namespace SmartTV.WebView2Host
                         await SendEventAsync(new { type = "error", message = ex.Message, code = "PARSER" });
                     }
                 }
+
+                // Pipe disconnected: close window to avoid black rectangle remaining
+                await Dispatcher.InvokeAsync(Close);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[Host] Pipe error: {ex.Message}");
-                await SendEventAsync(new { type = "error", message = ex.Message, code = "PIPE" });
+                try { await SendEventAsync(new { type = "error", message = ex.Message, code = "PIPE" }); } catch { }
+                // On pipe error, close window
+                await Dispatcher.InvokeAsync(Close);
             }
         }
 

@@ -7,7 +7,7 @@
         ResizeMode="NoResize"
         WindowStartupLocation="Manual"
         ShowInTaskbar="False"
-        Topmost="True"
+        Topmost="False"
         Background="Black"
         AllowsTransparency="False">
     <Grid>

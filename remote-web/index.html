@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>SmartTV Remote</title>
     <style>
+      * { box-sizing: border-box; }
       body {
         font-family: system-ui;
         margin: 0;
@@ -23,6 +24,8 @@
         padding: 30px;
         box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         border: 1px solid rgba(255,255,255,0.1);
+        width: min(520px, 100vw - 24px);
+        margin: 12px;
       }
       
       .remote-title {
@@ -36,14 +39,15 @@
       .pad {
         display: grid;
         gap: 15px;
-        grid-template-columns: repeat(3, 70px);
-        grid-template-rows: repeat(4, 50px);
+        grid-template-columns: repeat(3, minmax(96px, 1fr));
+        grid-template-rows: 84px 84px 84px 200px 72px;
+        justify-content: center;
       }
       
       button {
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 600;
-        border-radius: 12px;
+        border-radius: 14px;
         border: 1px solid rgba(255,255,255,0.2);
         background: rgba(255,255,255,0.1);
         color: white;
@@ -52,6 +56,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        user-select: none;
       }
       
       button:hover {
@@ -78,23 +83,33 @@
       .btn-menu { grid-column: 3; grid-row: 3; }
       
       /* Volume row */
-      .vol-down { grid-column: 1; grid-row: 4; }
-      .vol-up { grid-column: 3; grid-row: 4; }
+      .vol-down { grid-column: 1; grid-row: 5; height: 64px; }
+      .vol-up { grid-column: 3; grid-row: 5; height: 64px; }
+      .btn-back2 { grid-column: 2; grid-row: 5; height: 64px; }
 
-      /* Trackpad */
+      /* Trackpad - dedicated full-width row */
       .trackpad { 
-        grid-column: 2; grid-row: 4; 
-        width: 60px; height: 50px; 
-        border-radius: 14px; 
+        grid-column: 1 / -1; grid-row: 4; 
+        width: 100%; height: 200px; 
+        border-radius: 18px; 
         background: rgba(255,255,255,0.08); 
         border: 1px solid rgba(255,255,255,0.2);
         box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
         display: flex; align-items: center; justify-content: center;
         user-select: none; touch-action: none;
-        font-size: 12px; color: rgba(255,255,255,0.7);
+        font-size: 14px; color: rgba(255,255,255,0.8);
+        padding: 8px; text-align: center;
       }
       .trackpad.active { background: rgba(102,217,239,0.15); border-color: rgba(102,217,239,0.5); }
-      .wide { grid-column: span 3; }
+      .hint { font-size: 12px; opacity: 0.75; margin-top: 8px; text-align: center; }
+
+      /* Responsive tweaks */
+      @media (max-width: 420px) {
+        .remote-container { padding: 16px; }
+        .pad { gap: 12px; grid-template-rows: 72px 72px 72px 170px 60px; }
+        .trackpad { height: 170px; }
+        button { font-size: 16px; }
+      }
     </style>
   </head>
   <body>
@@ -102,25 +117,32 @@
       <div class="remote-title">📱 SmartTV Remote</div>
       <div class="pad">
         <!-- Row 1: Back, Up, Home -->
-        <button class="btn-back" data-cmd="nav:back" title="Back">⟲</button>
-        <button class="nav-up" data-cmd="nav:up" title="Up">▲</button>
+        <button class="btn-back" data-cmd="nav:back" title="Indietro">⟲</button>
+        <button class="nav-up" data-cmd="nav:up" title="Su">▲</button>
         <button class="btn-home" data-cmd="home" title="Home">🏠</button>
         
         <!-- Row 2: Left, OK, Right -->
-        <button class="nav-left" data-cmd="nav:left" title="Left">◀</button>
+        <button class="nav-left" data-cmd="nav:left" title="Sinistra">◀</button>
         <button class="nav-ok" data-cmd="nav:ok" title="OK">OK</button>
-        <button class="nav-right" data-cmd="nav:right" title="Right">▶</button>
+        <button class="nav-right" data-cmd="nav:right" title="Destra">▶</button>
         
         <!-- Row 3: Play, Down, Menu -->
-        <button class="btn-play" data-cmd="play:toggle" title="Play/Pause">⏯</button>
-        <button class="nav-down" data-cmd="nav:down" title="Down">▼</button>
+        <button class="btn-play" data-cmd="play:toggle" title="Play/Pausa">⏯</button>
+        <button class="nav-down" data-cmd="nav:down" title="Giù">▼</button>
         <button class="btn-menu" data-cmd="menu" title="Menu">☰</button>
         
-        <!-- Row 4: Volume Controls + Trackpad in center -->
-        <button class="vol-down" data-cmd="vol:down" title="Volume Down">🔉</button>
-        <div class="trackpad" id="trackpad">Touch</div>
-        <button class="vol-up" data-cmd="vol:up" title="Volume Up">🔊</button>
+        <!-- Row 4: Trackpad full width -->
+        <div class="trackpad" id="trackpad">
+          Trascina per muovere il cursore
+          <br/>Due dita per scorrere
+        </div>
+
+        <!-- Row 5: Volume Controls -->
+        <button class="vol-down" data-cmd="vol:down" title="Volume -">🔉</button>
+        <button class="btn-back2" data-cmd="nav:back" title="Torna indietro">⬅ Indietro</button>
+        <button class="vol-up" data-cmd="vol:up" title="Volume +">🔊</button>
       </div>
+      <div class="hint">Suggerimento: con il mouse puoi usare la rotellina sopra il trackpad per scorrere</div>
     </div>
     
     <script>
@@ -147,13 +169,17 @@
         })
       })
       
-      // Trackpad logic
+      // Trackpad logic (bigger + smoother + two-finger scroll)
       const pad = document.getElementById('trackpad')
+      let mode = 'move' // 'move' or 'scroll'
       let startX = 0, startY = 0, lastX = 0, lastY = 0, moved = false
       let lastSent = 0
-      const throttleMs = 40
+      const throttleMs = 24
+      const moveSensitivity = 1.2 // cursor
+      const scrollSensitivity = 1.1 // scrolling
 
-      function begin(x, y){
+      function begin(x, y, m='move'){
+        mode = m
         startX = lastX = x; startY = lastY = y; moved = false
         pad.classList.add('active')
       }
@@ -161,40 +187,66 @@
         const dx = x - lastX
         const dy = y - lastY
         const now = Date.now()
-        if (Math.abs(dx) + Math.abs(dy) > 0 && now - lastSent > throttleMs){
+        if (now - lastSent > throttleMs){
           lastSent = now
-          // invert dy to match natural scrolling (finger up => content down)
-          send('pad:move', { dx: Math.round(dx), dy: Math.round(-dy) })
+          if (mode === 'scroll'){
+            // Natural scrolling: dita in su => contenuto giù
+            send('pad:scroll', { dx: Math.round(dx * scrollSensitivity), dy: Math.round(-dy * scrollSensitivity) })
+          } else {
+            send('pad:move', { dx: Math.round(dx * moveSensitivity), dy: Math.round(-dy * moveSensitivity) })
+          }
           lastX = x; lastY = y; moved = true
         }
       }
       function end(x, y){
         pad.classList.remove('active')
-        const totalDx = x - startX
-        const totalDy = y - startY
-        if (!moved || (Math.abs(totalDx) < 8 && Math.abs(totalDy) < 8)){
-          send('pad:click')
+        if (mode === 'move'){
+          const totalDx = x - startX
+          const totalDy = y - startY
+          if (!moved || (Math.abs(totalDx) < 8 && Math.abs(totalDy) < 8)){
+            send('pad:click')
+          }
         }
+        mode = 'move'
       }
 
+      // Touch handlers
       pad.addEventListener('touchstart', (e)=>{
-        const t = e.touches[0]; begin(t.clientX, t.clientY)
+        if (e.touches.length >= 2){
+          // usa il baricentro delle due dita per lo scroll
+          const x = (e.touches[0].clientX + e.touches[1].clientX) / 2
+          const y = (e.touches[0].clientY + e.touches[1].clientY) / 2
+          begin(x, y, 'scroll')
+        } else {
+          const t = e.touches[0]; begin(t.clientX, t.clientY, 'move')
+        }
       }, {passive: true})
       pad.addEventListener('touchmove', (e)=>{
-        const t = e.touches[0]; move(t.clientX, t.clientY)
+        if (mode === 'scroll' && e.touches.length >= 2){
+          const x = (e.touches[0].clientX + e.touches[1].clientX) / 2
+          const y = (e.touches[0].clientY + e.touches[1].clientY) / 2
+          move(x, y)
+        } else {
+          const t = e.touches[0]; move(t.clientX, t.clientY)
+        }
       }, {passive: true})
       pad.addEventListener('touchend', (e)=>{
         const t = e.changedTouches[0] || {clientX: lastX, clientY: lastY}; end(t.clientX, t.clientY)
       })
 
       // Mouse fallback
-      pad.addEventListener('mousedown', (e)=> begin(e.clientX, e.clientY))
+      pad.addEventListener('mousedown', (e)=> begin(e.clientX, e.clientY, 'move'))
       window.addEventListener('mousemove', (e)=> {
         if (pad.classList.contains('active')) move(e.clientX, e.clientY)
       })
       window.addEventListener('mouseup', (e)=> {
         if (pad.classList.contains('active')) end(e.clientX, e.clientY)
       })
+      // Wheel to scroll when hovering the pad
+      pad.addEventListener('wheel', (e)=>{
+        e.preventDefault()
+        send('pad:scroll', { dx: Math.round(e.deltaX), dy: Math.round(e.deltaY) })
+      }, { passive: false })
       
       // Connection status
       ws.onopen = () => console.log('Remote connected')

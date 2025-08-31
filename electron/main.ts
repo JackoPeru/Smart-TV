@@ -6,13 +6,23 @@ import net from 'net'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
 
+// Disabilita pinch-zoom a livello di Chromium per evitare rimpicciolimenti accidentali
+app.commandLine.appendSwitch('disable-pinch')
+
 let win: BrowserWindow | null = null
 
 // DRM bridge state
 let hostProc: any = null
 let pipe: net.Socket | null = null
 // Percorso corretto delle Named Pipe in Windows: \\.\pipe\smarttv_webview2
-const PIPE_NAME = '\\\\.\\\\pipe\\\\smarttv_webview2' as const
+const PIPE_NAME = "\\\\.\\pipe\\smarttv_webview2"
+
+function killHost() {
+  try { pipe?.destroy() } catch {}
+  pipe = null
+  try { hostProc?.kill?.() } catch {}
+  hostProc = null
+}
 
 function connectPipe(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,6 +73,8 @@ async function connectPipeWithRetry(retries = 15, delayMs = 200): Promise<void> 
       await new Promise((r) => setTimeout(r, delayMs))
     }
   }
+  // Dopo i tentativi falliti, uccidi l'host per evitare finestra nera persistente
+  killHost()
   throw new Error(`Failed to connect to DRM host pipe after ${retries} attempts`)
 }
 
@@ -82,71 +94,37 @@ function spawnHost() {
   child.on('exit', (code) => {
     console.log('WebView2 host exited with code', code)
     hostProc = null
-    pipe?.destroy()
+    try { pipe?.destroy() } catch {}
     pipe = null
   })
 }
 
 function createWindow() {
-  // Create the browser window.
   win = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    fullscreen: !isDev, // Windowed mode in development for easier debugging
+    show: false,
+    width: 1280,
+    height: 720,
     autoHideMenuBar: true,
-    backgroundColor: '#000000',
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.mjs'),
-      contextIsolation: true,
+      preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
-      webviewTag: true,
-      sandbox: !isDev, // Enable in prod
-      webSecurity: true, // keep enabled also in development to avoid security warnings
-      allowRunningInsecureContent: false,
+      contextIsolation: true
     },
+    backgroundColor: '#000000',
   })
 
-  // Debug: Enable DevTools automatically in development
-  if (isDev) {
-    win.webContents.openDevTools()
-    console.log('DevTools opened in development mode')
-  }
-
-  // Debug: Add detailed logging for page load events
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(`Failed to load page: ${errorCode} - ${errorDescription} - ${validatedURL}`)
-  })
-
-  win.webContents.on('did-finish-load', () => {
-    console.log('Page finished loading')
-  })
-
-  win.webContents.on('dom-ready', () => {
-    console.log('DOM is ready')
-    // Inject debug script to check if React is loading
-    win?.webContents.executeJavaScript(`
-      console.log('ELECTRON INJECTED: DOM ready, checking elements...');
-      console.log('ELECTRON INJECTED: Root element:', document.getElementById('root'));
-      console.log('ELECTRON INJECTED: Body innerHTML length:', document.body.innerHTML.length);
-      console.log('ELECTRON INJECTED: First 500 chars:', document.body.innerHTML.substring(0, 500));
-    `)
-  })
-
-  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    console.log(`RENDERER CONSOLE [${level}]: ${message} (${sourceId}:${line})`)
-  })
-
-  const url = process.env.ELECTRON_RENDERER_URL
-  if (url) {
-    console.log('Loading renderer URL:', url)
-    win.loadURL(url)
+  if (process.env.ELECTRON_RENDERER_URL) {
+    win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    const htmlPath = join(__dirname, '../renderer/index.html')
-    console.log('Loading HTML file:', htmlPath)
-    win.loadFile(htmlPath)
+    win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  win.on('closed', () => { win = null })
+  win.on('ready-to-show', () => {
+    win?.show()
+  })
+
+  win.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {})
+  win.webContents.setZoomFactor(1.0)
 }
 
 app.whenReady().then(async () => {
@@ -167,7 +145,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('drm:nav', (_e, { cmd }) => sendToHost({ type: 'nav', cmd }))
   ipcMain.handle('drm:exec', (_e, { code }) => sendToHost({ type: 'exec', code }))
   ipcMain.handle('drm:postMessage', (_e, { payload }) => sendToHost({ type: 'postMessage', payload }))
-  ipcMain.handle('drm:close', () => sendToHost({ type: 'close' }))
+  ipcMain.handle('drm:close', () => {
+    if (pipe) sendToHost({ type: 'close' })
+    else killHost()
+  })
+  ipcMain.handle('drm:kill', () => {
+    killHost()
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

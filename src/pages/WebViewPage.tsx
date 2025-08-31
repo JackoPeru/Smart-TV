@@ -68,17 +68,16 @@ export default function WebViewPage(){
     if (!tag || !webviewReadyRef.current) return
     const code = `(() => {
       const x=${Math.round(x)}, y=${Math.round(y)};
-      // Cursor overlay inside page (optional visual)
       try {
         const id='__smarttv_cursor';
         let el = document.getElementById(id);
         if (!el) {
           el = document.createElement('div');
           el.id = id;
-          el.style.cssText = 'position:fixed;z-index:2147483647;left:0;top:0;width:16px;height:16px;border-radius:50%;background:rgba(102,217,239,0.9);box-shadow:0 0 10px rgba(102,217,239,0.7);pointer-events:none;transform:translate(-100px,-100px);';
+          el.style.cssText = 'position:fixed;z-index:2147483647;left:0;top:0;width:22px;height:22px;border-radius:50%;background:rgba(102,217,239,0.9);box-shadow:0 0 12px rgba(102,217,239,0.8);pointer-events:none;transform:translate(-100px,-100px);';
           document.documentElement.appendChild(el);
         }
-        el.style.transform = 'translate(' + (x-8) + 'px,' + (y-8) + 'px)';
+        el.style.transform = 'translate(' + (x-11) + 'px,' + (y-11) + 'px)';
       } catch {}
       const ev = new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true });
       document.dispatchEvent(ev);
@@ -101,61 +100,52 @@ export default function WebViewPage(){
     try { tag.executeJavaScript(code, false) } catch {}
   }, [])
 
+  const injectScroll = React.useCallback((dx: number, dy: number) => {
+    const tag = webviewRef.current
+    if (!tag || !webviewReadyRef.current) return
+    const code = `(() => {
+      try {
+        window.scrollBy({ left: ${Math.round(dx)}, top: ${Math.round(dy)}, behavior: 'auto' });
+      } catch {}
+    })();`
+    try { tag.executeJavaScript(code, false) } catch {}
+  }, [])
+
   React.useEffect(() => {
     if (!isElectron) return
+    const container = containerRef.current
+    if (!container) return
 
-    const tag = document.createElement('webview') as unknown as Electron.WebviewTag
-    const container = containerRef.current!
-    tag.setAttribute('src', urlParam)
-    tag.setAttribute('partition', config.partition)
-    tag.setAttribute('allowpopups', 'true')
+    const tag = document.createElement('webview')
     tag.style.width = '100%'
     tag.style.height = '100%'
-    tag.style.display = 'block'
-    tag.style.backgroundColor = '#000'
-    if (config.ua) tag.setAttribute('useragent', config.ua)
+    tag.style.border = '0'
+    tag.setAttribute('src', urlParam)
+    tag.setAttribute('allowpopups', 'true')
+    if (config.partition) tag.setAttribute('partition', config.partition)
 
     const onNewWindow = (e: any) => {
-      try {
-        const url = e.url || e.detail?.url
-        if (!url) return
-        const host = new URL(url).hostname
-        if (config.allowedHosts.includes(host)) {
-          tag.loadURL(url)
-        } else {
-          window.smartTV.openExternal(url)
-        }
-      } catch {}
+      const url = e.url as string
+      window.smartTV.openExternal(url)
+      e.preventDefault?.()
     }
-
     const onWillNavigate = (e: any) => {
-      try {
-        const url = e.url || e.detail?.url || ''
-        if (!url) return
-        const host = new URL(url).hostname
-        if (!config.allowedHosts.includes(host)) {
-          e.preventDefault?.()
-          window.smartTV.openExternal(url)
-        }
-      } catch {}
+      const url = e.url as string
+      const host = new URL(url).host
+      if (config.allowedHosts.length && !config.allowedHosts.includes(host)) {
+        window.smartTV.openExternal(url)
+        e.preventDefault?.()
+      }
     }
-
     const onDomReady = () => {
       webviewReadyRef.current = true
-      try { tag.insertCSS('::-webkit-scrollbar{display:none;} body{overscroll-behavior:none;}') } catch {}
-    }
-
-    const onDidAttach = () => {
-      try {
-        // Ensure UA is applied even if attribute was missed; only after attach is safe
-        if (config.ua) (tag as any).setUserAgent?.(config.ua)
-      } catch {}
+      try { tag.insertCSS('html,body{height:100%;} ::-webkit-scrollbar{display:none;} body{overscroll-behavior:none; touch-action:none !important;}') } catch {}
+      try { tag.executeJavaScript('document.addEventListener("wheel", e=>{ if(e.ctrlKey){ e.preventDefault(); } }, {passive:false});', false) } catch {}
     }
 
     tag.addEventListener('new-window', onNewWindow as any)
     tag.addEventListener('will-navigate', onWillNavigate as any)
     tag.addEventListener('dom-ready', onDomReady as any)
-    tag.addEventListener('did-attach-webview', onDidAttach as any)
 
     container.appendChild(tag as any)
     webviewRef.current = tag
@@ -168,9 +158,9 @@ export default function WebViewPage(){
         on('pad:move', ({dx, dy}: {dx:number, dy:number}) => {
           const cont = containerRef.current
           if (!cont) return
-          const speed = 1.2 // sensitivity factor
+          const speed = 1.4
           const nx = cursorPos.current.x + (dx * speed)
-          const ny = cursorPos.current.y + ((-dy) * speed) // invert dy back to match finger movement
+          const ny = cursorPos.current.y + ((-dy) * speed)
           const clamped = clampToContainer(nx, ny)
           cursorPos.current = clamped
           updateOverlay()
@@ -179,6 +169,10 @@ export default function WebViewPage(){
         on('pad:click', () => {
           const { x, y } = cursorPos.current
           injectMouseClick(x, y)
+        })
+        // Scroll remoto (es. due dita sul trackpad mobile)
+        on('pad:scroll', ({dx, dy}: {dx:number, dy:number}) => {
+          injectScroll(dx, dy)
         })
         on('nav:back', () => { try { tag.goBack() } catch {} })
         on('play:toggle', () => {
@@ -195,13 +189,12 @@ export default function WebViewPage(){
       tag.removeEventListener('new-window', onNewWindow as any)
       tag.removeEventListener('will-navigate', onWillNavigate as any)
       tag.removeEventListener('dom-ready', onDomReady as any)
-      tag.removeEventListener('did-attach-webview', onDidAttach as any)
       ;(tag as any).remove?.()
-      off('pad:move'); off('pad:click'); off('nav:back'); off('play:toggle'); off('menu')
+      off('pad:move'); off('pad:click'); off('pad:scroll'); off('nav:back'); off('play:toggle'); off('menu')
       webviewReadyRef.current = false
       webviewRef.current = null
     }
-  }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, updateOverlay])
+  }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, injectScroll, updateOverlay])
 
   if (!isElectron) {
     return (
@@ -212,7 +205,7 @@ export default function WebViewPage(){
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100vw', height: '100vh', background: '#000' }}>
+    <div ref={containerRef} style={{ position: 'relative', width: '100vw', height: '100vh', background: '#000', overflow: 'hidden' }}>
       {/* Cursor overlay in renderer */}
       <div
         ref={overlayRef}
@@ -220,14 +213,14 @@ export default function WebViewPage(){
           position: 'absolute',
           left: 0,
           top: 0,
-          width: 16,
-          height: 16,
+          width: 22,
+          height: 22,
           borderRadius: 999,
           background: 'rgba(102,217,239,0.9)',
-          boxShadow: '0 0 10px rgba(102,217,239,0.7)',
+          boxShadow: '0 0 12px rgba(102,217,239,0.8)',
           pointerEvents: 'none',
           transform: `translate(${cursorPos.current.x}px, ${cursorPos.current.y}px)`,
-          transition: 'transform 40ms linear',
+          transition: 'transform 36ms linear',
           zIndex: 10,
         }}
       />
