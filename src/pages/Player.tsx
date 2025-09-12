@@ -35,7 +35,7 @@ export default function Player(){
           return
         }
         // Open via WebView2 host
-        try { api.drm.open({ service: serviceKey, url, sessionKey: serviceKey, display: 'primary', fullscreen: true }) } catch {}
+        try { api.drm.open({ service: serviceKey, url, sessionKey: serviceKey, display: 'primary', fullscreen: true, userAgent: svc.tvUserAgent }) } catch {}
         // Startup safety timeout: if no events after 8s, close and fallback
         startTimeout = setTimeout(() => {
           try { api.drm.close() } catch {}

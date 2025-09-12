@@ -125,18 +125,29 @@ namespace SmartTV.WebView2Host
                 _sessionKey = root.GetProperty("sessionKey").GetString() ?? _serviceKey;
                 var url = root.GetProperty("url").GetString() ?? "about:blank";
                 var fullscreen = root.TryGetProperty("fullscreen", out var fs) && fs.GetBoolean();
-                Debug.WriteLine($"[Host] HandleOpen: service={_serviceKey} session={_sessionKey} url={url} fullscreen={fullscreen}");
+                string? userAgent = null;
+                if (root.TryGetProperty("userAgent", out var uaProp) && uaProp.ValueKind == JsonValueKind.String)
+                {
+                    userAgent = uaProp.GetString();
+                }
+                Debug.WriteLine($"[Host] HandleOpen: service={_serviceKey} session={_sessionKey} url={url} fullscreen={fullscreen} ua={(userAgent ?? "<default>")}" );
 
                 var userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SmartTV", "sessions", _sessionKey);
                 Directory.CreateDirectory(userDataFolder);
                 Debug.WriteLine($"[Host] Using profile folder: {userDataFolder}");
 
-                // Rimuoviamo l'inizializzazione di default e usiamo solo l'environment personalizzato
+                // Use environment with dedicated user data folder
                 var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
                 await WebView.EnsureCoreWebView2Async(env);
 
                 WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 WebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                // Apply custom Smart TV user agent if provided
+                if (!string.IsNullOrWhiteSpace(userAgent))
+                {
+                    try { WebView.CoreWebView2.Settings.UserAgent = userAgent; }
+                    catch (Exception ex) { Debug.WriteLine($"[Host] Failed to set UserAgent: {ex.Message}"); }
+                }
                 WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
                 WebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 

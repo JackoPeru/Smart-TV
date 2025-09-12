@@ -36,26 +36,26 @@ const SERVICES: Record<ServiceKey, ServiceAdapter> = {
     key: 'netflix',
     hosts: ['netflix.com'],
     entry: 'https://www.netflix.com/browse',
-    // Some services enforce UA/device checks; leave undefined by default
-    tvUserAgent: undefined,
+    // Force Android TV-like UA to favor TV layout when possible
+    tvUserAgent: UA.androidTV,
     partition: 'netflix',
-    allowedHosts: ['netflix.com', 'nflxvideo.net'],
+    allowedHosts: ['netflix.com', 'nflxvideo.net', 'nflximg.net', 'nflxext.com', 'nflxso.net'],
   },
   prime: {
     key: 'prime',
     hosts: ['primevideo.com', 'amazon.com'],
     entry: 'https://www.primevideo.com',
-    tvUserAgent: undefined,
+    tvUserAgent: UA.androidTV,
     partition: 'prime',
-    allowedHosts: ['primevideo.com', 'amazon.com', 'aiv-cdn.net'],
+    allowedHosts: ['primevideo.com', 'amazon.com', 'aiv-cdn.net', 'media-amazon.com', 'amazonaws.com'],
   },
   disney: {
     key: 'disney',
     hosts: ['disneyplus.com'],
     entry: 'https://www.disneyplus.com',
-    tvUserAgent: undefined,
+    tvUserAgent: UA.androidTV,
     partition: 'disney',
-    allowedHosts: ['disneyplus.com', 'bamgrid.com'],
+    allowedHosts: ['disneyplus.com', 'bamgrid.com', 'dssott.com'],
   },
   spotify: {
     key: 'spotify',

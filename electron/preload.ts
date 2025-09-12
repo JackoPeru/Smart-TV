@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('smartTV', {
     window.postMessage({ type: 'smarttv:navigate', payload: { url } }, '*')
   },
   drm: {
-    open: (opts: { service: string; url: string; sessionKey: string; display?: 'primary'|'secondary'; fullscreen?: boolean }) => ipcRenderer.invoke('drm:open', opts),
+    open: (opts: { service: string; url: string; sessionKey: string; display?: 'primary'|'secondary'; fullscreen?: boolean; userAgent?: string }) => ipcRenderer.invoke('drm:open', opts),
     nav: (cmd: 'back'|'forward'|'reload') => ipcRenderer.invoke('drm:nav', { cmd }),
     exec: (code: string) => ipcRenderer.invoke('drm:exec', { code }),
     postMessage: (payload: any) => ipcRenderer.invoke('drm:postMessage', { payload }),

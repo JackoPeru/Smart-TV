@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { resolveServiceForUrl } from '../services/adapters'
 import { connectRemote, on, off } from '../remote/client'
 
-export default function WebViewPage(){
+export default function WebViewPage() {
   const [params] = useSearchParams()
   const nav = useNavigate()
   const webviewRef = React.useRef<Electron.WebviewTag | null>(null)
@@ -15,7 +15,10 @@ export default function WebViewPage(){
   const cursorPos = React.useRef({ x: 200, y: 200 })
 
   const isElectron = React.useMemo(() => {
-    return (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')) || !!(window as any).smartTV
+    return (
+      (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron')) ||
+      !!(window as any).smartTV
+    )
   }, [])
 
   const urlParam = params.get('url') || ''
@@ -111,6 +114,22 @@ export default function WebViewPage(){
     try { tag.executeJavaScript(code, false) } catch {}
   }, [])
 
+  // D-Pad support: invia tasti Arrow/Enter per UI 10-foot
+  const injectKey = React.useCallback((key: string) => {
+    const tag = webviewRef.current
+    if (!tag || !webviewReadyRef.current) return
+    const code = `(() => {
+      try {
+        const k = ${JSON.stringify(key)};
+        const down = new KeyboardEvent('keydown', { key: k, bubbles: true });
+        const up = new KeyboardEvent('keyup', { key: k, bubbles: true });
+        document.dispatchEvent(down);
+        document.dispatchEvent(up);
+      } catch {}
+    })();`
+    try { tag.executeJavaScript(code, false) } catch {}
+  }, [])
+
   React.useEffect(() => {
     if (!isElectron) return
     const container = containerRef.current
@@ -123,16 +142,26 @@ export default function WebViewPage(){
     tag.setAttribute('src', urlParam)
     tag.setAttribute('allowpopups', 'true')
     if (config.partition) tag.setAttribute('partition', config.partition)
+    // Imposta UA TV quando disponibile, per innescare UI Smart TV lato servizio
+    if (config.ua) tag.setAttribute('useragent', config.ua)
+
+    const isAllowed = (host: string) => {
+      if (!config.allowedHosts || config.allowedHosts.length === 0) return true
+      return config.allowedHosts.some(h => host === h || host.endsWith('.' + h))
+    }
 
     const onNewWindow = (e: any) => {
       const url = e.url as string
-      window.smartTV.openExternal(url)
-      e.preventDefault?.()
+      const host = new URL(url).host
+      if (!isAllowed(host)) {
+        window.smartTV.openExternal(url)
+        e.preventDefault?.()
+      }
     }
     const onWillNavigate = (e: any) => {
       const url = e.url as string
       const host = new URL(url).host
-      if (config.allowedHosts.length && !config.allowedHosts.includes(host)) {
+      if (!isAllowed(host)) {
         window.smartTV.openExternal(url)
         e.preventDefault?.()
       }
@@ -151,11 +180,11 @@ export default function WebViewPage(){
     webviewRef.current = tag
 
     ;(async () => {
-      try{
+      try {
         const base = await window.smartTV.getRemoteURL()
         connectRemote(base)
         // TRACKPAD: move cursor and inject mouse events
-        on('pad:move', ({dx, dy}: {dx:number, dy:number}) => {
+        on('pad:move', ({ dx, dy }: { dx: number, dy: number }) => {
           const cont = containerRef.current
           if (!cont) return
           const speed = 1.4
@@ -171,10 +200,17 @@ export default function WebViewPage(){
           injectMouseClick(x, y)
         })
         // Scroll remoto (es. due dita sul trackpad mobile)
-        on('pad:scroll', ({dx, dy}: {dx:number, dy:number}) => {
+        on('pad:scroll', ({ dx, dy }: { dx: number, dy: number }) => {
           injectScroll(dx, dy)
         })
         on('nav:back', () => { try { tag.goBack() } catch {} })
+        // D-PAD mapping → Arrow / Enter per navigare senza touch
+        on('nav:up', () => injectKey('ArrowUp'))
+        on('nav:down', () => injectKey('ArrowDown'))
+        on('nav:left', () => injectKey('ArrowLeft'))
+        on('nav:right', () => injectKey('ArrowRight'))
+        on('nav:ok', () => injectKey('Enter'))
+        // Play toggle (space o "k") come fallback generico
         on('play:toggle', () => {
           if (!webviewReadyRef.current) return
           try {
@@ -182,7 +218,7 @@ export default function WebViewPage(){
           } catch {}
         })
         on('menu', () => { if (!webviewReadyRef.current) return; try { tag.openDevTools() } catch {} })
-      }catch{}
+      } catch { }
     })()
 
     return () => {
@@ -191,10 +227,11 @@ export default function WebViewPage(){
       tag.removeEventListener('dom-ready', onDomReady as any)
       ;(tag as any).remove?.()
       off('pad:move'); off('pad:click'); off('pad:scroll'); off('nav:back'); off('play:toggle'); off('menu')
+      off('nav:up'); off('nav:down'); off('nav:left'); off('nav:right'); off('nav:ok')
       webviewReadyRef.current = false
       webviewRef.current = null
     }
-  }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, injectScroll, updateOverlay])
+  }, [isElectron, config.allowedHosts, config.partition, config.ua, urlParam, clampToContainer, injectMouseMove, injectMouseClick, injectScroll, updateOverlay, injectKey])
 
   if (!isElectron) {
     return (

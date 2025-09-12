@@ -6,7 +6,7 @@ declare global {
       // Optional: open target URL inside in-app WebView route
       openInApp?: (url: string) => Promise<void>
       drm: {
-        open: (opts: { service: string; url: string; sessionKey: string; display?: 'primary'|'secondary'; fullscreen?: boolean }) => Promise<void>
+        open: (opts: { service: string; url: string; sessionKey: string; display?: 'primary'|'secondary'; fullscreen?: boolean; userAgent?: string }) => Promise<void>
         nav: (cmd: 'back'|'forward'|'reload') => Promise<void>
         exec: (code: string) => Promise<void>
         postMessage: (payload: any) => Promise<void>
